@@ -26,12 +26,12 @@ npm run watch   # continuo
 
 ## Pipeline
 
-`SCANNER → ENLAZADOR → RESOLVER → AUDITOR (stub) → ORQUESTADOR`
+`SCANNER → ENLAZADOR → RESOLVER → AUDITOR → ORQUESTADOR`
 
 - **Scanner**: descubre candidatos nuevos vía Etherscan API v2
 - **Linker**: encuentra URL oficial y extrae direcciones
 - **Resolver**: detecta proxies (EIP-1967), obtiene source verificado
-- **Auditor**: stub (fase 1); reglas reales en PROMPTS/02
+- **Auditor**: reglas estáticas TS (fase 2): delegatecall, tx.origin, reentrancy, etc.
 - **Orchestrator**: orquesta la cadena + retries + CLI
 
 ## Salida de ejemplo
@@ -52,7 +52,7 @@ docker compose run sentinel once
 | Fichero | Cuándo |
 |---------|--------|
 | `PROMPTS/01_plan_scaffold.md` | **Por defecto** — PLAN + código sin auditor real |
-| `PROMPTS/02_auditor.md` | Tras 01, si se pide fase 2 |
+| `PROMPTS/02_auditor.md` | Fase 2 — auditor real activado |
 | `PROMPTS/03_deploy.md` | Docker/VPS al final |
 
 ## Estado
@@ -61,4 +61,4 @@ Ver [`docs/SESSION_HANDOFF.md`](./docs/SESSION_HANDOFF.md) solo si dice `STATUS:
 
 ## Próximo
 
-Sesión nueva → copia la línea de `START.md` o abre este repo y di: *"ejecuta contract-sentinel fase 01"*.
+Sesión nueva → abre este repo y di: *"ejecuta contract-sentinel fase 02"*.

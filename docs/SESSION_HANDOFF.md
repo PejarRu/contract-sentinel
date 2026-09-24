@@ -9,7 +9,7 @@ New session: read `START.md` → this file → active `PROMPTS/`.
 
 ## Goal
 
-Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verified Solidity (+ proxy), run auditor (stub until fase 2), persist SQLite, report/email. No signing.
+Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verified Solidity (+ proxy), run auditor (fase 2 real rules), persist SQLite, report/email. No signing.
 
 ## Canonical paths
 
@@ -21,9 +21,9 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 
 ## Current state
 
-- Phase: **01 done** — scaffold + pipeline a–e (auditor stub).
-- Tests: **12/12 passing** | typecheck: **green**
-- Smoke: `MOCK_MODE=1 npm run once` — 2 candidates, 2 contracts, 2 findings
+- Phase: **02 done** — auditor real activado (10 reglas estáticas TS).
+- Tests: **22/22 passing** | typecheck: **green**
+- Smoke: `MOCK_MODE=1 npm run once` — 2 candidates, 2 contracts, 2+ findings
 - VPS: not deployed
 
 ## Feature state
@@ -33,8 +33,22 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 | Scanner | done |
 | Linker | done |
 | Resolver | done |
-| Auditor stub | done |
+| Auditor | **done (fase 2 real)** |
 | Orchestrator + email | done |
+
+## Auditor rules (fase 2)
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| delegatecall | high | delegatecall usage |
+| tx.origin | high | tx.origin auth |
+| selfdestruct | critical | selfdestruct/suicide |
+| reentrancy | high | .call() without guard |
+| ecrecover | medium | ecrecover without EIP-712 |
+| Ownable two-step | medium | renounce without transfer |
+| block.timestamp oracle | medium | block.timestamp in oracle |
+| mint/burn cap | medium | mint/burn without supply cap |
+| proxy initializer | medium | initializer without reinitializer |
 
 ## Safety
 
@@ -43,7 +57,7 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 ## Open work
 
 - [x] Fase 01
-- [ ] Fase 02 auditor
+- [x] Fase 02 auditor
 - [ ] Fase 03 deploy
 
 ## Commands

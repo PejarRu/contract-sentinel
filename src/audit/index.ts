@@ -1,9 +1,11 @@
 // AUDITOR factory: creates the Auditor instance.
-// Phase 1 returns StubAuditor; phase 2 may inject real auditor.
+// Phase 1 returns StubAuditor; phase 2 returns RealAuditor.
 
-import { StubAuditor, type Auditor, type AuditInput, type Finding } from "./auditor.js";
+import { RealAuditor, type Auditor, type AuditInput, type Finding } from "./auditor.js";
 
-export { type AuditInput, type Finding };
 export function createAuditor(): Auditor {
-  return new StubAuditor();
+  return new RealAuditor();
 }
+
+export { RealAuditor, type AuditInput, type Finding };
+export { type Auditor } from "./auditor.js";

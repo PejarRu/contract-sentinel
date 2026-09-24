@@ -19,3 +19,9 @@ Tradeoff: Dependencia de API key de Etherscan; fallback mantiene funcionalidad s
 Decisión: Fase 1 = stub puro; rules van a PROMPTS/02.
 Contexto: Scope de fase 01 es scaffold + pipeline completo. Auditor real requiere análisis de seguridad profundo.
 Tradeoff: Pipeline incompleto sin auditor real; pero scaffold valida toda la infraestructura.
+
+## D004 — Auditor fase 2: reglas estáticas en TS
+
+Decisión: implementar reglas de auditoría como funciones TS sobre source code (sin depender de solc/slither).
+Contexto: PROMPTS/02 especifica rules estáticas en TS como mínimo. Slither es opcional con SLITHER_ENABLED=1.
+Tradeoff: cobertura limitada a patrones de texto; no análisis de control-flow profundo. Fácil de mantener y sin dependencias nativas.
