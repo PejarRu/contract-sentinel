@@ -19,7 +19,7 @@ Estado en SQLite; informes `reports/` + email opcional por env; Docker opcional.
 
 **No** firma tx, **no** usa claves privadas, **no** ejecuta código de terceros on-chain.
 
-## Key files (rellenar al hacer scaffold)
+## Key files
 
 | Path | Role |
 | --- | --- |

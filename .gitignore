@@ -1,0 +1,9 @@
+node_modules/
+data/
+contracts/
+reports/
+.env
+.env.local
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

@@ -1,7 +1,7 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** _(rellenar YYYY-MM-DD HH:MM Europe/Madrid)_  
+> **Date:** 2026-09-24 00:00 Europe/Madrid  
 > **Git:** main tip at last content refresh — **always re-check** `git log -1 --oneline`.  
 > **Previous handoffs:** supersede entirely (do not merge).
 
@@ -17,23 +17,24 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 |------|------|
 | Repo | `/mnt/shared/work_projects/Proyectos de trabajo/_activos/contract-sentinel` |
 | Style ref | `.../_activos/morpho-liquidation` |
-| Remote | `github.com:PejarRu/contract-sentinel` (cuando exista) |
+| Remote | `github.com:PejarRu/contract-sentinel` |
 
 ## Current state
 
-- Phase: `01` not started | scaffold | done (elegir).
-- Tests: _ / typecheck: _
+- Phase: **01 done** — scaffold + pipeline a–e (auditor stub).
+- Tests: **12/12 passing** | typecheck: **green**
+- Smoke: `MOCK_MODE=1 npm run once` — 2 candidates, 2 contracts, 2 findings
 - VPS: not deployed
 
 ## Feature state
 
 | Feature | Status |
 |---------|--------|
-| Scanner | pending |
-| Linker | pending |
-| Resolver | pending |
-| Auditor stub | pending |
-| Orchestrator + email | pending |
+| Scanner | done |
+| Linker | done |
+| Resolver | done |
+| Auditor stub | done |
+| Orchestrator + email | done |
 
 ## Safety
 
@@ -41,7 +42,7 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 
 ## Open work
 
-- [ ] Fase 01 si no hecha
+- [x] Fase 01
 - [ ] Fase 02 auditor
 - [ ] Fase 03 deploy
 
