@@ -1,7 +1,8 @@
 services:
   sentinel:
     image: contract-sentinel:${IMAGE_TAG:-latest}
-    build: .
+    build:
+      context: ${APP_DIR:-.}
     environment:
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
       CHAIN_ID: ${CHAIN_ID:-1}
