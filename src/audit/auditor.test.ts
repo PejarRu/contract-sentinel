@@ -122,6 +122,16 @@ test("FP: constructor-only _mint (no public mint) is not reported", async () => 
   assert.ok(!findings.some((f) => f.title === "Mint/burn without supply cap"));
 });
 
+test("project file importing openzeppelin-contracts-* is still audited (import ≠ vendored)", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "Stablecoin.sol":
+      'import "openzeppelin-contracts-upgradeable/contracts/token/ERC20/ERC20Upgradeable.sol";\ncontract S { function mint(address a, uint256 v) external onlyOwner {} }',
+  });
+  const findings = await auditor.run(input);
+  assert.ok(findings.some((f) => f.title === "Mint/burn without supply cap"));
+});
+
 test("multi-file Etherscan wrapper: lib delegatecall ignored, project code audited", async () => {
   const auditor = new RealAuditor();
   const wrapper = JSON.stringify({

@@ -43,7 +43,11 @@ const VENDORED_CONTENT_RE =
 function isVendored(file: SourceFile): boolean {
   if (VENDORED_PATH_RE.test(file.path)) return true;
   if (VENDORED_PATH_PREFIX_RE.test(file.path)) return true;
-  return VENDORED_CONTENT_RE.test(file.content);
+  // Import statements mentioning a dep are not proof the file IS the dep:
+  // strip them before testing content markers (project files legitimately
+  // import "openzeppelin-contracts-upgradeable/...").
+  const nonImport = file.content.replace(/^\s*import\s.*$/gm, "");
+  return VENDORED_CONTENT_RE.test(nonImport);
 }
 
 function stripComments(src: string): string {

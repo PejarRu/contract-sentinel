@@ -129,12 +129,14 @@ async function detectProxyInfo(
   if (process.env.MOCK_MODE === "1") return out;
 
   const ZERO_SLOT = `0x${"0".repeat(64)}`;
+  const HEX_32 = /^0x[0-9a-f]{64}$/;
   const readSlot = async (position: string): Promise<string> => {
     try {
       const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=proxy&action=eth_getStorageAt&address=${address}&position=${position}&tag=latest&apikey=${apiKey}`;
       const res = await fetch(url);
       const data = await res.json();
-      return typeof data.result === "string" ? data.result.toLowerCase() : "";
+      const r = typeof data.result === "string" ? data.result.toLowerCase() : "";
+      return HEX_32.test(r) ? r : "";
     } catch {
       return "";
     }
