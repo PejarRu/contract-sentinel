@@ -1,7 +1,7 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** 2026-09-25 12:30 Europe/Madrid  
+> **Date:** 2026-09-25 15:00 Europe/Madrid  
 > **Git:** main tip at last content refresh — **always re-check** `git log -1 --oneline`.  
 > **Previous handoffs:** supersede entirely (do not merge).
 
@@ -21,11 +21,11 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 
 ## Current state
 
-- Phase: **03 done + scanner fix deployed** — real discovery pipeline live at SHA `5884751`.
-- Tests: **25/25 passing** | typecheck: **green**
+- Phase: **03 done + scanner fix + auditor FP reduction** — deploy target `f79a16a`.
+- Tests: **33/33 passing** | typecheck: **green**
 - Smoke: `MOCK_MODE=1 docker compose run --rm --no-deps sentinel once` — 2 candidates, 2 contracts, 0 findings.
 - Docker: container `contract-sentinel-sentinel-1` on `root@91.99.142.12`, healthy, no published ports.
-- Live data (run 90, first real with fixed scanner): **16 candidates, 16 contracts resolved, 10 findings** (delegatecall high ×N, mint/burn medium, Ownable medium).
+- Live data (run 90, first real with fixed scanner): **16 candidates, 16 contracts resolved, 10 findings** (pre-FP-reduction rules).
 
 ## Deploy
 
@@ -69,6 +69,13 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
   - Proxy: `eth_getStorageAt` en slots EIP-1967 (impl + admin), en vez del endpoint inexistente.
   - Dedupe intra-batch (mismo token en varios pools).
 - Verificado end-to-end en local y VPS: 16 candidatos → 16 contratos con source → 10 findings.
+
+## Auditor FP reduction + pentest manual (2026-09-25, `f79a16a`)
+
+- **Pentest de los 6 `.sol` con source verificado:** los 10 findings originales eran falsos positivos (verificados línea a línea): delegatecall todo en libs OZ (incluso un comentario NatSpec `@custom:oz-upgrades-unsafe-allow`), mint/burn solo constructor sin entrada pública, Ownable single-step = patrón estándar. `setMarket`/`enableHolderFees`/`notifyReward` (FINE) y `reduceFee`/`manualSwap` (B-MISHA) tienen guard inline verificado — sin bug explotable. Sin bug bounty programs en estos tokens; contacto directo solo si aparece bug real.
+- **Fix en auditor (`f79a16a`):** expand de wrappers Etherscan `{{...}}` a ficheros con paths reales → exclusión de vendored (`lib/`, `@`, `openzeppelin`, `contracts/{proxy,upgradeability,util}/`, markers de contenido) → strip de comentarios antes de las reglas → mint/burn exige entrada pública (function public/external o ABI) → Ownable de medium→low con detección real de two-step (`acceptOwnership`/`pendingOwner`) → dedupe por título.
+- **Validación empírica con los 6 reales:** 10 findings → 2 (FINE reentrancy high por `.call{value}` en `claim()` sin guard — CEI manualmente correcto, es señal de revisión; TEST Ownable low). 4 contratos → 0.
+- Tests: 33/33 (8 nuevos de regresión FP).
 
 ## Remaining (user action)
 
@@ -119,15 +126,17 @@ Cron: `*/5 * * * * root /opt/contract-sentinel/heartbeat.sh >> /opt/contract-sen
 
 | Rule | Severity | Description |
 |------|----------|-------------|
-| delegatecall | high | delegatecall usage |
+| delegatecall | high | delegatecall en código propio (libs excluidas) |
 | tx.origin | high | tx.origin auth |
 | selfdestruct | critical | selfdestruct/suicide |
 | reentrancy | high | .call() without guard |
 | ecrecover | medium | ecrecover without EIP-712 |
-| Ownable two-step | medium | renounce without transfer |
+| Ownable two-step | **low** | sin acceptOwnership (nota centralización) |
 | block.timestamp oracle | medium | block.timestamp in oracle |
-| mint/burn cap | medium | mint/burn without supply cap |
+| mint/burn cap | medium | entrada pública mint/burn sin cap |
 | proxy initializer | medium | initializer without reinitializer |
+
+Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo código propio del proyecto.
 
 ## Safety
 
@@ -139,6 +148,9 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Fase 02 auditor
 - [x] Fase 03 deploy (Docker + VPS + heartbeat verificado)
 - [x] Fix scanner discovery (GeckoTerminal/DexScreener + Etherscan v2) — datos reales fluyendo
+- [x] Auditor FP reduction (`f79a16a`) + pentest manual de los 6 contratos
+- [ ] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB
+- [ ] Fetch de source de `implementation` en proxies (EURI/JPYC: solo infra OZ verificada, lógica real sin auditar)
 - [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario)
 
 ## Commands
