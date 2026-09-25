@@ -77,6 +77,16 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 - **Validación empírica con los 6 reales:** 10 findings → 2 (FINE reentrancy high por `.call{value}` en `claim()` sin guard — CEI manualmente correcto, es señal de revisión; TEST Ownable low). 4 contratos → 0.
 - Tests: 33/33 (8 nuevos de regresión FP).
 
+## Implementation de proxies auditado (2026-09-25, `5cc57a5`)
+
+- Script `/tmp/opencode/fetch_impls.ts`: lee slot EIP-1967 impl+admin de los 21 proxies marcados + EURI/JPYC, baja source de cada implementation vía Etherscan v2, audita. Resultado: 4 implementations reales (EURI `0x039a26c8…` 93 líneas, JPYC `0xafac17fc…` 75 líneas, `0xb5276c43…`, `0x6890cde2…`), 19 direcciones no son proxies de verdad.
+- **EURI y JPYC impl: [medium] Mint/burn without supply cap** — verificado manualmente: ambos tienen `mint(...) external` con solo `onlyOwner`/`onlyMinters`+allowance, sin cap de supply. Centralización/diseño, no bug explotable. EURI además: `freeze`/`unpause`/`setTrustForwarder` onlyOwner (ERC2771). JPYC: fork de USDC FiatTokenV2 (blocklist, pausable, minters+minterAllowance).
+- Otros 2 impls: 0 findings.
+- **Bugs corregidos en `5cc57a5`** (34/34 tests):
+  1. Resolver: `eth_getStorageAt` con rate-limit de Etherscan devolvía texto libre → se guardaba como `implementation` corrupta en 21 filas. Fix: regex `^0x[0-9a-f]{64}$`.
+  2. Auditor: `isVendored` filtraba por contenido `openzeppelin-contracts` — un fichero de proyecto con `import "openzeppelin-contracts-upgradeable/…"` se excluía entero (falso negativo: EURI no disparaba). Fix: strip de líneas `import` antes del test de contenido.
+- Findings históricos corruptos en DB (`implementation = "0xcalls per sec…"`) — limpiables con UPDATE cuando convenga.
+
 ## Remaining (user action)
 
 - Set `ETHERSCAN_API_KEY` and SMTP in `/opt/contract-sentinel/secrets/sentinel.env`, then `docker compose exec sentinel npm run once` (non-mock) to validate live discovery + email.
@@ -150,7 +160,8 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Fix scanner discovery (GeckoTerminal/DexScreener + Etherscan v2) — datos reales fluyendo
 - [x] Auditor FP reduction (`f79a16a`) + pentest manual de los 6 contratos
 - [x] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB — **`425c8f7` desplegado, run 101 completed con 0 findings sobre contratos nuevos (38 contratos en DB; re-triage OK)**
-- [ ] Fetch de source de `implementation` en proxies (EURI/JPYC: solo infra OZ verificada, lógica real sin auditar)
+- [x] Fetch de source de `implementation` en proxies — hecho; EURI/JPYC impls auditados (medium mint/burn sin cap, centralización)
+- [x] Fix auditor falso negativo por imports OZ + resolver rate-limit (`5cc57a5`)
 - [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario)
 
 ## Commands
