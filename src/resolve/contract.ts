@@ -59,9 +59,11 @@ export async function resolve(address: `0x${string}`): Promise<ResolvedContract>
     return mockResolve(address, db);
   }
 
-  // Fetch from Etherscan
+  // Fetch from Etherscan API v2
   const apiKey = process.env.ETHERSCAN_API_KEY ?? "";
-  const apiUrl = `https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
+  const chainId = parseInt(process.env.CHAIN_ID ?? "1");
+  const apiBase = `https://api.etherscan.io/v2/api?chainid=${chainId}`;
+  const apiUrl = `${apiBase}&module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
 
   try {
     const res = await fetch(apiUrl);
@@ -91,8 +93,11 @@ export async function resolve(address: `0x${string}`): Promise<ResolvedContract>
     // Return partial result
   }
 
-  // Check for proxy pattern via bytecode or storage slots
-  result.proxy = await detectProxy(address, apiKey);
+  // Detect proxy pattern via EIP-1967 storage slots
+  const proxyInfo = await detectProxyInfo(address, apiKey, chainId);
+  result.proxy = proxyInfo.proxy;
+  result.implementation = proxyInfo.implementation;
+  result.admin = proxyInfo.admin;
 
   // Cache result
   db.prepare(`
@@ -111,27 +116,42 @@ export async function resolve(address: `0x${string}`): Promise<ResolvedContract>
   return result;
 }
 
-async function detectProxy(address: string, apiKey: string): Promise<boolean> {
-  // In mock mode, return a mock proxy
-  if (process.env.MOCK_MODE === "1") {
-    return false;
+async function detectProxyInfo(
+  address: string,
+  apiKey: string,
+  chainId: number
+): Promise<{ proxy: boolean; implementation: `0x${string}` | null; admin: `0x${string}` | null }> {
+  const out: { proxy: boolean; implementation: `0x${string}` | null; admin: `0x${string}` | null } = {
+    proxy: false,
+    implementation: null,
+    admin: null,
+  };
+  if (process.env.MOCK_MODE === "1") return out;
+
+  const ZERO_SLOT = `0x${"0".repeat(64)}`;
+  const readSlot = async (position: string): Promise<string> => {
+    try {
+      const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=proxy&action=eth_getStorageAt&address=${address}&position=${position}&tag=latest&apikey=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return typeof data.result === "string" ? data.result.toLowerCase() : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const impl = await readSlot(EIP1967_IMPLEMENTATION_SLOT);
+  if (impl && impl !== ZERO_SLOT && impl.length >= 42) {
+    out.proxy = true;
+    out.implementation = (`0x${impl.slice(-40)}`) as `0x${string}`;
   }
 
-  // Check bytecode for delegatecall (0xf4)
-  const bytecodeUrl = `https://api.etherscan.io/api?module=contract&action=getbytecode&address=${address}&apikey=${apiKey}`;
-  try {
-    const res = await fetch(bytecodeUrl);
-    const data = await res.json();
-    if (data.result && data.result.length > 0 && data.result[0].Bytecode) {
-      const bytecode = data.result[0].Bytecode;
-      if (bytecode.includes("f4")) {
-        return true;
-      }
-    }
-  } catch {
-    // Ignore
+  const admin = await readSlot(EIP1967_ADMIN_SLOT);
+  if (admin && admin !== ZERO_SLOT && admin.length >= 42) {
+    out.admin = (`0x${admin.slice(-40)}`) as `0x${string}`;
   }
-  return false;
+
+  return out;
 }
 
 async function mockResolve(address: `0x${string}`, db: Database.Database): Promise<ResolvedContract> {
