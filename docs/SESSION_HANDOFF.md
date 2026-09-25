@@ -1,7 +1,7 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** 2026-09-24 16:50 Europe/Madrid  
+> **Date:** 2026-09-25 12:30 Europe/Madrid  
 > **Git:** main tip at last content refresh — **always re-check** `git log -1 --oneline`.  
 > **Previous handoffs:** supersede entirely (do not merge).
 
@@ -21,18 +21,18 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 
 ## Current state
 
-- Phase: **03 done** — reproducible Docker deployment live on VPS at SHA `19427ae`.
-- Tests: **22/22 passing** | typecheck: **green**
+- Phase: **03 done + scanner fix deployed** — real discovery pipeline live at SHA `5884751`.
+- Tests: **25/25 passing** | typecheck: **green**
 - Smoke: `MOCK_MODE=1 docker compose run --rm --no-deps sentinel once` — 2 candidates, 2 contracts, 0 findings.
-- Docker: container `contract-sentinel-sentinel-1` running on `root@91.99.142.12`, healthy, with no published ports.
-- Non-mock `--once`: completed as run 2 with 0 candidates, 0 contracts and 0 findings. `ETHERSCAN_API_KEY` is currently empty, so this does not validate live Etherscan discovery.
+- Docker: container `contract-sentinel-sentinel-1` on `root@91.99.142.12`, healthy, no published ports.
+- Live data (run 90, first real with fixed scanner): **16 candidates, 16 contracts resolved, 10 findings** (delegatecall high ×N, mint/burn medium, Ownable medium).
 
 ## Deploy
 
 | Item | Value |
 |------|-------|
 | Host | `root@91.99.142.12` (Hetzner) |
-| SHA deployed | `19427ae` (fix: parameterize Docker build context) |
+| SHA deployed | `5884751` (fix(scanner): discovery real) |
 | Node | `v22.23.3` |
 | Docker image | Compose image `contract-sentinel-sentinel` (`node:22-slim` + native build dependencies) |
 | DB | `/app/data/contract-sentinel.sqlite` (volume-mounted from `/opt/contract-sentinel/data`) |
@@ -59,6 +59,16 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 - Heartbeat: `{"heartbeat":"ok","lastRun":{"id":6,"status":"completed",...}}`
 - Build context: root Compose uses `${APP_DIR:-.}`; VPS sets `APP_DIR=./app`.
 - VPS does **not** push to GitHub (no SSH key there) — all pushes originate locally.
+
+## Bug (fixed 2026-09-25): scanner descubría 0 candidatos
+
+- **Causa raíz:** Etherscan `action=contractlist` no existe → respuesta NOTOK silenciosa → 89 runs "completed" con 0 candidatos. Tampoco existía `getbytecode` (detección de proxy muerta).
+- **Fix en `5884751`:**
+  - Discovery: GeckoTerminal `GET /api/v2/networks/eth/new_pools?include=base_token` (primario, sin key), DexScreener `token-profiles/latest/v1` + `tokens/v1` (fallback). Errores de ambas fuentes ahora **fallan el run** en vez de silenciar.
+  - Resolver: migrado a `api.etherscan.io/v2/api?chainid=1` (getsourcecode OK verificado en vivo).
+  - Proxy: `eth_getStorageAt` en slots EIP-1967 (impl + admin), en vez del endpoint inexistente.
+  - Dedupe intra-batch (mismo token en varios pools).
+- Verificado end-to-end en local y VPS: 16 candidatos → 16 contratos con source → 10 findings.
 
 ## Remaining (user action)
 
@@ -128,7 +138,8 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Fase 01
 - [x] Fase 02 auditor
 - [x] Fase 03 deploy (Docker + VPS + heartbeat verificado)
-- [ ] Credenciales reales (ETHERSCAN/SMTP) — pendiente de usuario
+- [x] Fix scanner discovery (GeckoTerminal/DexScreener + Etherscan v2) — datos reales fluyendo
+- [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario)
 
 ## Commands
 
