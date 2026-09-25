@@ -91,3 +91,85 @@ test("detects reentrancy guard as safe", async () => {
   const findings = await auditor.run(input);
   assert.ok(!findings.some((f) => f.title === "Potential reentrancy vulnerability"));
 });
+
+// --- FP regression: EURI/FINE/JPYC/PHA/SENDPEPE real-world cases (2026-09-25) ---
+
+test("FP: delegatecall in vendored OZ lib is not reported", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "lib/openzeppelin-contracts/contracts/utils/Address.sol":
+      "library Address { function functionDelegateCall(address t, bytes memory d) internal returns (bytes memory) { (bool s, bytes memory r) = t.delegatecall(d); return r; } }",
+  });
+  const findings = await auditor.run(input);
+  assert.ok(!findings.some((f) => f.title === "delegatecall detected"));
+});
+
+test("FP: delegatecall in comments/NatSpec is not reported", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "Test.sol": "// we do not use delegatecall here\n/** @custom:oz-upgrades-unsafe-allow delegatecall */\ncontract A {}",
+  });
+  const findings = await auditor.run(input);
+  assert.ok(!findings.some((f) => f.title === "delegatecall detected"));
+});
+
+test("FP: constructor-only _mint (no public mint) is not reported", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "Token.sol": "contract T { constructor() { _mint(msg.sender, 1000000); } function _mint(address a, uint256 v) internal {} }",
+  });
+  const findings = await auditor.run(input);
+  assert.ok(!findings.some((f) => f.title === "Mint/burn without supply cap"));
+});
+
+test("multi-file Etherscan wrapper: lib delegatecall ignored, project code audited", async () => {
+  const auditor = new RealAuditor();
+  const wrapper = JSON.stringify({
+    language: "Solidity",
+    sources: {
+      "lib/openzeppelin-contracts/contracts/proxy/Proxy.sol": { content: "contract P { fallback() { assembly { delegatecall(gas(), impl, 0, 0, 0, 0) } } }" },
+      "src/Token.sol": { content: "contract Token { function steal() { require(tx.origin == owner); } }" },
+    },
+  });
+  const input = makeInput({ "0xabc.sol": `{${wrapper}}` });
+  const findings = await auditor.run(input);
+  assert.ok(!findings.some((f) => f.title === "delegatecall detected"));
+  assert.ok(findings.some((f) => f.title === "tx.origin used for authentication"));
+});
+
+test("all sources vendored => no findings", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol": "contract ERC1967Proxy { constructor(address l, bytes memory d) { } }",
+    "contracts/util/Address.sol": "library Address { function delegate1(address t) internal { t.delegatecall(\"\"); } }",
+  });
+  const findings = await auditor.run(input);
+  assert.strictEqual(findings.length, 0);
+});
+
+test("Ownable2Step (acceptOwnership) is not reported", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "Test.sol": "contract Ownable2Step { function renounceOwnership() public {} function transferOwnership(address n) public {} function acceptOwnership() public {} }",
+  });
+  const findings = await auditor.run(input);
+  assert.ok(!findings.some((f) => f.title === "Ownable without two-step ownership transfer"));
+});
+
+test("Ownable single-step downgraded to low", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({ "Test.sol": "contract Ownable { function renounceOwnership() public {} }" });
+  const findings = await auditor.run(input);
+  const f = findings.find((f) => f.title === "Ownable without two-step ownership transfer");
+  assert.ok(f);
+  assert.strictEqual(f.severity, "low");
+});
+
+test("duplicate delegatecall lines deduped to one finding", async () => {
+  const auditor = new RealAuditor();
+  const input = makeInput({
+    "Test.sol": "contract A { function x() { t.delegatecall(a); } function y() { t.delegatecall(b); } }",
+  });
+  const findings = await auditor.run(input);
+  assert.strictEqual(findings.filter((f) => f.title === "delegatecall detected").length, 1);
+});
