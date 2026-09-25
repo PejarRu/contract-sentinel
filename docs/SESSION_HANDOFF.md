@@ -21,7 +21,7 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 
 ## Current state
 
-- Phase: **03 done + scanner fix + auditor FP reduction** — deploy target `f79a16a`.
+- Phase: **03 done + scanner fix + auditor FP reduction** — live at SHA `425c8f7` (VPS verified, run 101 clean).
 - Tests: **33/33 passing** | typecheck: **green**
 - Smoke: `MOCK_MODE=1 docker compose run --rm --no-deps sentinel once` — 2 candidates, 2 contracts, 0 findings.
 - Docker: container `contract-sentinel-sentinel-1` on `root@91.99.142.12`, healthy, no published ports.
@@ -149,7 +149,7 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Fase 03 deploy (Docker + VPS + heartbeat verificado)
 - [x] Fix scanner discovery (GeckoTerminal/DexScreener + Etherscan v2) — datos reales fluyendo
 - [x] Auditor FP reduction (`f79a16a`) + pentest manual de los 6 contratos
-- [ ] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB
+- [x] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB — **`425c8f7` desplegado, run 101 completed con 0 findings sobre contratos nuevos (38 contratos en DB; re-triage OK)**
 - [ ] Fetch de source de `implementation` en proxies (EURI/JPYC: solo infra OZ verificada, lógica real sin auditar)
 - [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario)
 
