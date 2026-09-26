@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test",
     "once": "tsx src/index.ts --once",
-    "watch": "tsx src/index.ts --watch"
+    "watch": "tsx src/index.ts --watch",
+    "digest": "tsx src/digest.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
