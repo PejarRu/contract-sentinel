@@ -87,6 +87,11 @@ function initSchema(db: Database.Database): void {
       error TEXT,
       FOREIGN KEY (run_id) REFERENCES runs(id)
     );
+
+    CREATE TABLE IF NOT EXISTS digest_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_sent_at TEXT
+    );
   `);
 }
 

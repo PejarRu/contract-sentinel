@@ -45,10 +45,34 @@ export function explorerUrl(chainId: number, address: string): string {
 }
 
 /** Local-time SQLite datetime: 'YYYY-MM-DD HH:MM:SS' (schema uses datetime('now','localtime')). */
-export function sqlCutoff(windowH: number, now = Date.now()): string {
-  const d = new Date(now - windowH * 3600 * 1000);
+export function localDatetime(now = Date.now()): string {
+  const d = new Date(now);
   const p = (n: number): string => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+export function sqlCutoff(windowH: number, now = Date.now()): string {
+  return localDatetime(now - windowH * 3600 * 1000);
+}
+
+/**
+ * Window start for the next digest: the timestamp of the last successful send
+ * (digest_state marker), so nothing is ever emailed twice. Falls back to the
+ * fixed window only on the very first run.
+ */
+export function getDigestSince(db: Database.Database, windowH: number, now = Date.now()): string {
+  const row = db.prepare("SELECT last_sent_at FROM digest_state WHERE id = 1").get() as
+    { last_sent_at: string | null } | undefined;
+  if (row?.last_sent_at) return row.last_sent_at;
+  return sqlCutoff(windowH, now);
+}
+
+/** Record a successful send so the next digest starts exactly here. */
+export function markDigestSent(db: Database.Database, now = Date.now()): void {
+  db.prepare(
+    "INSERT INTO digest_state (id, last_sent_at) VALUES (1, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET last_sent_at = excluded.last_sent_at",
+  ).run(localDatetime(now));
 }
 
 function maxSeverity(findings: DigestFinding[]): number {
@@ -68,7 +92,7 @@ export function collectDigestRows(db: Database.Database, since: string): DigestR
 
   const frows = db
     .prepare(
-      "SELECT f.contract_address, f.severity, f.title FROM findings f " +
+      "SELECT DISTINCT f.contract_address, f.severity, f.title FROM findings f " +
         "JOIN runs r ON r.id = f.run_id WHERE r.started_at >= ?",
     )
     .all(since) as Array<{ contract_address: string; severity: string; title: string }>;
@@ -247,9 +271,17 @@ async function main(): Promise<void> {
   const db = openDb();
   ensureDirectories();
 
-  const since = sqlCutoff(windowH);
+  // Start from the last successful send (no duplicate content across digests);
+  // fall back to the fixed window only on the first run.
+  const since = getDigestSince(db, windowH);
   const all = collectDigestRows(db, since);
   const rows = all.slice(0, maxRows);
+
+  if (rows.length === 0) {
+    console.log(`digest skipped: nothing new since ${since}`);
+    db.close();
+    return;
+  }
 
   const html = buildDigestHtml(rows, windowH);
   const text = buildDigestText(rows, windowH);
@@ -259,18 +291,21 @@ async function main(): Promise<void> {
   const subject = buildDigestSubject(windowH, st.total, st.high, st.medium);
 
   if (dryRun) {
-    console.log(`[dry-run] ${st.total} filas · artifact ${artifact}`);
+    console.log(`[dry-run] since ${since} · ${st.total} filas · artifact ${artifact}`);
     console.log(text.split("\n").slice(0, 30).join("\n"));
     db.close();
     return;
   }
 
   const result = await sendDigestEmail({ subject, html, text });
-  console.log(
-    result.sent
-      ? `digest sent (${st.total} contratos, ${st.withFindings} con hallazgos) · artifact ${artifact}`
-      : `digest NOT sent: ${result.error} · artifact ${artifact}`,
-  );
+  if (result.sent) {
+    markDigestSent(db); // advance the marker only after a confirmed send
+    console.log(
+      `digest sent (since ${since} · ${st.total} contratos, ${st.withFindings} con hallazgos) · artifact ${artifact}`,
+    );
+  } else {
+    console.log(`digest NOT sent: ${result.error} · artifact ${artifact}`);
+  }
   db.close();
 }
 

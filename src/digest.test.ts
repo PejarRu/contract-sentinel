@@ -9,6 +9,8 @@ import path from "node:path";
 import { openDb } from "./lib/db.js";
 import {
   sqlCutoff,
+  getDigestSince,
+  markDigestSent,
   collectDigestRows,
   buildDigestHtml,
   buildDigestText,
@@ -109,4 +111,55 @@ test("explorerUrl falls back to etherscan for unknown chains", () => {
   assert.equal(explorerUrl(1, "0x1"), "https://etherscan.io/address/0x1");
   assert.equal(explorerUrl(42161, "0x1"), "https://arbiscan.io/address/0x1");
   assert.equal(explorerUrl(999, "0x1"), "https://etherscan.io/address/0x1");
+});
+
+test("digest_state marker: first run uses window, later runs resume from marker (no dupes)", () => {
+  const { db, dir } = tmpDb();
+  try {
+    const t0 = new Date("2026-09-26T08:00:00").getTime();
+    // First run: no marker → fixed window cutoff
+    assert.equal(getDigestSince(db, 12, t0), sqlCutoff(12, t0));
+
+    // Two candidates: one before marker, one after
+    db.prepare("INSERT INTO candidates (address, name, symbol, chainId, discovered_at) VALUES (?,?,?,?,?)")
+      .run("0xbefore", "Before", "BFR", 1, "2026-09-26 07:30:00");
+    db.prepare("INSERT INTO candidates (address, name, symbol, chainId, discovered_at) VALUES (?,?,?,?,?)")
+      .run("0xafter", "After", "AFT", 1, "2026-09-26 09:10:00");
+
+    // Simulate a send at 09:00 → marker advances
+    const tSend = new Date("2026-09-26T09:00:00").getTime();
+    markDigestSent(db, tSend);
+    assert.equal(getDigestSince(db, 12, tSend), "2026-09-26 09:00:00");
+
+    // Next digest: only the post-marker candidate (0xbefore already sent)
+    const rows = collectDigestRows(db, getDigestSince(db, 12, tSend));
+    assert.deepEqual(rows.map((r) => r.address), ["0xafter"]);
+
+    // Marker is idempotent (single row, upsert)
+    markDigestSent(db, new Date("2026-09-26T21:00:00").getTime());
+    assert.equal(getDigestSince(db, 12), "2026-09-26 21:00:00");
+    assert.equal((db.prepare("SELECT COUNT(*) n FROM digest_state").get() as { n: number }).n, 1);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("collect dedupes identical findings (SELECT DISTINCT)", () => {
+  const { db, dir } = tmpDb();
+  try {
+    const now = sqlCutoff(1).replace(/T/, " ");
+    db.prepare("INSERT INTO contracts (address, proxy) VALUES (?,?)").run("0xdup", 0);
+    const run = Number(db.prepare("INSERT INTO runs (status, started_at) VALUES ('completed', ?)").run(now).lastInsertRowid);
+    for (let i = 0; i < 3; i++) {
+      db.prepare("INSERT INTO findings (run_id, contract_address, severity, title) VALUES (?,?,?,?)")
+        .run(run, "0xdup", "high", "delegatecall detected");
+    }
+    const rows = collectDigestRows(db, sqlCutoff(12));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].findings.length, 1, "3 identical rows collapse to 1");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
