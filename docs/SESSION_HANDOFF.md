@@ -46,7 +46,7 @@ Read-only bot: discover newly listed protocols/tokens (Ethereum), resolve verifi
 - Compose uses `${VAR:-default}`, publishes no ports, mounts `data/contracts/reports`, and supports `docker compose run --rm sentinel once` through the image entrypoint.
 - `tsx` was moved to runtime dependencies; the Docker image uses a multi-stage `node:22-slim` build for `better-sqlite3`.
 - Local `docs/SESSION_HANDOFF.md` is modified and uncommitted.
-- Secrets remain only in `/opt/contract-sentinel/secrets/sentinel.env` (`0600`). `ETHERSCAN_API_KEY` is empty, `EMAIL_ENABLED=false`, and SMTP values have not been configured.
+- Secrets remain only in `/opt/contract-sentinel/secrets/sentinel.env` (`0600`). `ETHERSCAN_API_KEY`, SMTP y `EMAIL_ENABLED=true` configurados (2026-09-26); nunca en git.
 - Heartbeat cron exists at `/etc/cron.d/contract-sentinel`; the container healthcheck only verifies that the SQLite file exists.
 - Host Node was upgraded to `v22.23.3` because `better-sqlite3@13.0.3` segfaulted under Node 18.
 - Checkpoint validation: `docker compose config --quiet`, typecheck, and 22/22 tests passed. Local Docker access was unavailable, so the image was built in `/opt/contract-sentinel/runtime/phase03-build` on the VPS; build and Compose smoke both passed.
@@ -154,7 +154,7 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - `src/report/email.ts`: cliente SMTP propio (node:net/tls, sin dependencias — estilo `morpho-liquidation/src/report/email.ts`). Config `SMTP_URL` o `SMTP_HOST/PORT/USER/PASSWORD` + `EMAIL_ENABLED/TO/FROM`. AUTH redactado en errores.
 - `deploy/digest.sh` + cron VPS: `0 8,20 * * * root /opt/contract-sentinel/digest.sh >> runtime/digest.log`.
 - Tests 47/47 (email 9 + digest 4 + base 34). Validado en VPS: 103 filas/12h, 23 con hallazgos (14 high, 5 medium, 8 low).
-- **Pendiente usuario**: SMTP creds en `/opt/contract-sentinel/secrets/sentinel.env` (`SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD`, `EMAIL_ENABLED=true`, `EMAIL_TO=...`) → sin eso el cron solo escribe el artifact.
+- **SMTP configurado (2026-09-26)**: credenciales copiadas de `/opt/morpho-shadow/secrets/shadow.env` (método SMTP idéntico, plantillas propias) → `/opt/contract-sentinel/secrets/sentinel.env` (0600, gitignored). `EMAIL_ENABLED=true`, `EMAIL_TO=berzinsanton@gmail.com`, `smtp.gmail.com:587`. Primer envío real verificado: `digest sent (120 contratos, 21 con hallazgos)`.
 
 ## Safety
 
@@ -170,7 +170,8 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB — **`425c8f7` desplegado, run 101 completed con 0 findings sobre contratos nuevos (38 contratos en DB; re-triage OK)**
 - [x] Fetch de source de `implementation` en proxies — hecho; EURI/JPYC impls auditados (medium mint/burn sin cap, centralización)
 - [x] Fix auditor falso negativo por imports OZ + resolver rate-limit (`5cc57a5`)
-- [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario — ahora también bloquea el envío del digesto 12h)
+- [x] SMTP (copiado de morpho-shadow 2026-09-26; primer digesto real verificado)
+- [ ] Primer digesto por cron real (08:00/20:00) — verificar `runtime/digest.log` el 27-09 a las 08:00
 
 ## Commands
 
