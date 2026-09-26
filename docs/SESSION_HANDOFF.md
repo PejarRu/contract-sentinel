@@ -153,7 +153,8 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - `src/digest.ts` (`npm run digest`, `--dry-run` imprime sin enviar): consulta candidatos + findings de las últimas `DIGEST_WINDOW_H` (12h) → HTML+texto → artifact en `reports/digest-*.html|txt` → envía si `EMAIL_ENABLED=true`. Prioriza filas con hallazgos ordenadas por severidad; enlaces a explorer por chainId.
 - `src/report/email.ts`: cliente SMTP propio (node:net/tls, sin dependencias — estilo `morpho-liquidation/src/report/email.ts`). Config `SMTP_URL` o `SMTP_HOST/PORT/USER/PASSWORD` + `EMAIL_ENABLED/TO/FROM`. AUTH redactado en errores.
 - `deploy/digest.sh` + cron VPS: `0 8,20 * * * root /opt/contract-sentinel/digest.sh >> runtime/digest.log`.
-- Tests 47/47 (email 9 + digest 4 + base 34). Validado en VPS: 103 filas/12h, 23 con hallazgos (14 high, 5 medium, 8 low).
+- Tests 49/49 (email 9 + digest 6 + base 34). Validado en VPS: 103 filas/12h, 23 con hallazgos (14 high, 5 medium, 8 low).
+- **Sin duplicados (`079c819`, desplegado 2026-09-26 22:04)**: tabla `digest_state` (id=1, `last_sent_at`) — cada digesto arranca desde el último envío confirmado (nunca reenvía contenido), solo se avanza el marcador tras envío SMTP exitoso; `SELECT DISTINCT` en findings (colapsa los 2 pares legacy duplicados por era rate-limit); si 0 filas nuevas → `digest skipped: nothing new since …` sin enviar. Fallback a ventana 12h fija solo en el primer run. Verificado: 1er envío → 2ª ejecución `digest skipped`. Tests 49/49.
 - **SMTP configurado (2026-09-26)**: credenciales copiadas de `/opt/morpho-shadow/secrets/shadow.env` (método SMTP idéntico, plantillas propias) → `/opt/contract-sentinel/secrets/sentinel.env` (0600, gitignored). `EMAIL_ENABLED=true`, `EMAIL_TO=berzinsanton@gmail.com`, `smtp.gmail.com:587`. Primer envío real verificado: `digest sent (120 contratos, 21 con hallazgos)`.
 
 ## Safety
