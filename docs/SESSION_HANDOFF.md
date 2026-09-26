@@ -1,7 +1,7 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** 2026-09-25 15:00 Europe/Madrid  
+> **Date:** 2026-09-26 17:00 Europe/Madrid  
 > **Git:** main tip at last content refresh — **always re-check** `git log -1 --oneline`.  
 > **Previous handoffs:** supersede entirely (do not merge).
 
@@ -148,6 +148,14 @@ Cron: `*/5 * * * * root /opt/contract-sentinel/heartbeat.sh >> /opt/contract-sen
 
 Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo código propio del proyecto.
 
+## Digesto email 12h (`86da960`, desplegado 2026-09-26)
+
+- `src/digest.ts` (`npm run digest`, `--dry-run` imprime sin enviar): consulta candidatos + findings de las últimas `DIGEST_WINDOW_H` (12h) → HTML+texto → artifact en `reports/digest-*.html|txt` → envía si `EMAIL_ENABLED=true`. Prioriza filas con hallazgos ordenadas por severidad; enlaces a explorer por chainId.
+- `src/report/email.ts`: cliente SMTP propio (node:net/tls, sin dependencias — estilo `morpho-liquidation/src/report/email.ts`). Config `SMTP_URL` o `SMTP_HOST/PORT/USER/PASSWORD` + `EMAIL_ENABLED/TO/FROM`. AUTH redactado en errores.
+- `deploy/digest.sh` + cron VPS: `0 8,20 * * * root /opt/contract-sentinel/digest.sh >> runtime/digest.log`.
+- Tests 47/47 (email 9 + digest 4 + base 34). Validado en VPS: 103 filas/12h, 23 con hallazgos (14 high, 5 medium, 8 low).
+- **Pendiente usuario**: SMTP creds en `/opt/contract-sentinel/secrets/sentinel.env` (`SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD`, `EMAIL_ENABLED=true`, `EMAIL_TO=...`) → sin eso el cron solo escribe el artifact.
+
 ## Safety
 
 Read-only; no keys; no `.env` in git; Etherscan key env-only.
@@ -162,7 +170,7 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Redesplegar `f79a16a+` al VPS y verificar findings re-triaged en DB — **`425c8f7` desplegado, run 101 completed con 0 findings sobre contratos nuevos (38 contratos en DB; re-triage OK)**
 - [x] Fetch de source de `implementation` en proxies — hecho; EURI/JPYC impls auditados (medium mint/burn sin cap, centralización)
 - [x] Fix auditor falso negativo por imports OZ + resolver rate-limit (`5cc57a5`)
-- [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario)
+- [ ] SMTP (`EMAIL_ENABLED=false`, pendiente de usuario — ahora también bloquea el envío del digesto 12h)
 
 ## Commands
 
