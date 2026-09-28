@@ -158,7 +158,7 @@ export async function syncSheet(db: Database.Database, mode: "both" | "push" | "
     const existing = await sheetsValuesGet(cfg, "A2:M");
     const merged = mergeSheetRows(existing, rows);
     if (merged.length) {
-      await sheetsValuesPut(cfg, `A2:M${merged.length}`, merged);
+      await sheetsValuesPut(cfg, `A2:M${merged.length + 1}`, merged);
     }
     result.pushed = { rows: merged.length, added: merged.length - existing.length };
   }
