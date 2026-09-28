@@ -157,6 +157,17 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - **Sin duplicados (`079c819`, desplegado 2026-09-26 22:04)**: tabla `digest_state` (id=1, `last_sent_at`) — cada digesto arranca desde el último envío confirmado (nunca reenvía contenido), solo se avanza el marcador tras envío SMTP exitoso; `SELECT DISTINCT` en findings (colapsa los 2 pares legacy duplicados por era rate-limit); si 0 filas nuevas → `digest skipped: nothing new since …` sin enviar. Fallback a ventana 12h fija solo en el primer run. Verificado: 1er envío → 2ª ejecución `digest skipped`. Tests 49/49.
 - **SMTP configurado (2026-09-26)**: credenciales copiadas de `/opt/morpho-shadow/secrets/shadow.env` (método SMTP idéntico, plantillas propias) → `/opt/contract-sentinel/secrets/sentinel.env` (0600, gitignored). `EMAIL_ENABLED=true`, `EMAIL_TO=berzinsanton@gmail.com`, `smtp.gmail.com:587`. Primer envío real verificado: `digest sent (120 contratos, 21 con hallazgos)`.
 
+## Google Sheet tracker (`27f378b`, desplegado 2026-09-28)
+
+- **Sync bidireccional** `npm run sync-sheet` (`src/sync_sheet.ts`): SQL → Sheet (todas las columnas A–H, M) y Sheet → SQL (columnas humanas I–L → tabla `reviews`). Fuente de verdad única: el bot solo añade columnas A–H+M; I–L (`ESTADO`, `revisado_en`, `notas`, `bounty`) las escribe el humano y el pull las conserva en la DB.
+- Sheet: **«Contract Sentinel — Tracker de revisión»**, `SHEET_ID=1V8Gq7TPGXaC4JF1bYMRxu0V7XQcjrB_s6iutt8Y0g3s`. Cabeceras: `address,nombre,simbolo,chain,visto,src,findings,sev_max,ESTADO,revisado_en,notas,bounty,etherscan`.
+- Tabla `reviews (address PK, status, reviewed_at, notes, bounty, updated_at)` — SIN FK (hoja editable; filas huérfanas no rompen pull). `normalizeStatus` acepta aliases (`falso positivo`→fp, `bug real`→bug_real); desconocido→`pendiente`.
+- `mergeSheetRows`: preserva orden humano + I–L del existing, actualiza A–H+M, stale intactas, nuevas al final. **Rango PUT = `A2:M${merged.length+1}`** (fila 1 = cabecera; el `merged.length` a secas daba `tried writing to row 805`).
+- `src/lib/sheets.ts`: cliente fetch cero-dep; token refresh con **retry 3× backoff** (Google devuelve 400 intermitente `Invalid JSON payload` — curl siempre OK, era transitorio Google-side, no creds). Error serializa `JSON.stringify(data)` (antes `[object Object]`).
+- OAuth: client web `941748425000-tq8e9lkeb8r0qihcp819941s0i28rr7l.apps.googleusercontent.com`, redirect `http://localhost:8765` (SIN trailing barra). Creds en `secrets/sentinel.env` (0600, gitignored). **Compose whitelist**: `docker-compose.yml` debe listar `GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`, `SHEET_ID` en `environment:` (sin eso el container no los ve).
+- Cron VPS: `10 8,20 * * * root /opt/contract-sentinel/sync.sh >> runtime/sync.log` (5 min tras cada digesto).
+- Primer sync real: **804 filas push + 804 pull**. Tests 54/54.
+
 ## Safety
 
 Read-only; no keys; no `.env` in git; Etherscan key env-only.
@@ -173,6 +184,9 @@ Read-only; no keys; no `.env` in git; Etherscan key env-only.
 - [x] Fix auditor falso negativo por imports OZ + resolver rate-limit (`5cc57a5`)
 - [x] SMTP (copiado de morpho-shadow 2026-09-26; primer digesto real verificado)
 - [ ] Primer digesto por cron real (08:00/20:00) — verificar `runtime/digest.log` el 27-09 a las 08:00
+- [x] Google Sheet tracker sync bidireccional (`27f378b`, primer sync 804 filas, cron 8:10/20:10)
+- [ ] Primer sync por cron real — verificar `runtime/sync.log` el 29-09 a las 08:10
+- [ ] Marcar primeros ESTADO en el Sheet y comprobar que el pull los refleja en `reviews`
 
 ## Commands
 
