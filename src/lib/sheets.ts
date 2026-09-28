@@ -29,7 +29,9 @@ export function loadSheetsConfig(env: NodeJS.ProcessEnv = process.env): SheetsCo
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-/** OAuth access token via refresh token; cached until ~60s before expiry. */
+/** OAuth access token via refresh token; cached until ~60s before expiry.
+ * Google intermittently answers 400 (INVALID_ARGUMENT / JSON payload) on
+ * refresh — retry twice before failing. */
 export async function getAccessToken(cfg: SheetsConfig): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) return cachedToken.token;
   const body = new URLSearchParams({
@@ -38,17 +40,27 @@ export async function getAccessToken(cfg: SheetsConfig): Promise<string> {
     refresh_token: cfg.refreshToken,
     grant_type: "refresh_token",
   });
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x/x-www-form-urlencoded" },
-    body,
-  });
-  const data = (await res.json()) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };
-  if (!res.ok || !data.access_token) {
-    throw new Error(`Google token refresh failed (${res.status}): ${data.error ?? ""} ${data.error_description ?? ""}`);
+  let lastErr = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 500 * attempt));
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const data = (await res.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      error?: unknown;
+      error_description?: unknown;
+    };
+    if (res.ok && data.access_token) {
+      cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 };
+      return data.access_token;
+    }
+    lastErr = JSON.stringify(data).slice(0, 300);
   }
-  cachedToken = { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 };
-  return data.access_token;
+  throw new Error(`Google token refresh failed after 3 attempts: ${lastErr}`);
 }
 
 /** GET /v4/spreadsheets/{id}/values/{range} → cell matrix (row-major). Empty range → []. */
