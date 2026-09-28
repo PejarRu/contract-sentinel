@@ -167,6 +167,9 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - OAuth: client web `941748425000-tq8e9lkeb8r0qihcp819941s0i28rr7l.apps.googleusercontent.com`, redirect `http://localhost:8765` (SIN trailing barra). Creds en `secrets/sentinel.env` (0600, gitignored). **Compose whitelist**: `docker-compose.yml` debe listar `GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`, `SHEET_ID` en `environment:` (sin eso el container no los ve).
 - Cron VPS: `10 8,20 * * * root /opt/contract-sentinel/sync.sh >> runtime/sync.log` (5 min tras cada digesto).
 - Primer sync real: **804 filas push + 804 pull**. Tests 54/54.
+- **Bidireccional verificado en vivo (2026-09-28)**: edición simulada en Sheet → pull → `reviews` OK; edición sobrevive al push siguiente (merge preserva I–L); 827 filas a las 10:33.
+- **Pestaña `Revisiones` (dominio de la sesión de revisión, 2026-09-28)**: pestaña 2 del Sheet, creada vía API (sheetId 1294271795). A–G = clon live por `=ARRAYFORMULA(IF(...;"";...))` de la pestaña principal (address, nombre, sev_max, findings, etherscan, visto, ESTADO_tracker) — **locale es_ES ⇒ separador `;` en fórmulas** (con `,` daba #ERROR!). H–L editables por esa sesión: veredicto, pruebas_ejecutadas, explotable, notas_detalladas, fecha_revision. Grids ampliados a 5000 filas (PUT falla al superar grid). Pestaña principal renombrada por el usuario a **«Contrato encontrados»** (el sync usa rangos sin calificar → indiferente). Dominios: bot toca solo pestaña 1 (A–H,M + pull I–L); sesión de revisión solo H–L de Revisiones.
+- **Credenciales locales**: `secrets/local.env` (0600, gitignored) = GOOGLE_* + SHEET_ID + ETHERSCAN_API_KEY copiadas del VPS — para sesiones locales de revisión.
 
 ## Safety
 
