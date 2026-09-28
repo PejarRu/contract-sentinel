@@ -92,6 +92,17 @@ function initSchema(db: Database.Database): void {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       last_sent_at TEXT
     );
+
+    -- Human review tracker (synced from Google Sheet; see src/sync_sheet.ts).
+    -- No FK on address: the sheet is human-editable, stray rows must not break the pull.
+    CREATE TABLE IF NOT EXISTS reviews (
+      address TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'pendiente',
+      reviewed_at TEXT,
+      notes TEXT,
+      bounty TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
   `);
 }
 
