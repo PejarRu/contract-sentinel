@@ -1,4 +1,6 @@
-# Monetización de Bugs Quantum Cat y Quantum Pepe
+# [OBSOLETO] Monetización de Quantum Cat y Quantum Pepe
+
+> Este análisis fue invalidado por revisión de fuentes y pruebas en fork. QCAT/QPEPE implementan fee-sharing previsto, no un bug explotable. QPEPE pierde en las simulaciones; QCAT mostró beneficio puntual dependiente de fees acumulados, pero no una vulnerabilidad repetible. Ver `docs/SESSION_HANDOFF.md` para conclusión vigente.
 
 ## Resumen Ejecutivo
 

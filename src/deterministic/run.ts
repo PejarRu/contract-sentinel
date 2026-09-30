@@ -1,10 +1,7 @@
-// Deterministic contract scanner for 827 contracts from sheet
-// Tier 1: Regex/static analysis only (no LLM), minimal cost, 10 checks
-// Output: veredict + tests to sheet2 (Revisiones)
-
-import { loadSheetsConfig, sheetsValuesGet, sheetsValuesPut } from "./lib/sheets.ts";
-import * as fs from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import * as path from "path";
+import { fileURLToPath } from "url";
+import { loadSheetsConfig, sheetsValuesGet, sheetsValuesPut, type SheetsConfig } from "../lib/sheets.js";
 
 export interface Contract {
   address: `0x${string}`;
@@ -12,7 +9,8 @@ export interface Contract {
   symbol: string;
   chain: string;
   seen?: string;
-  findings: string[];
+  sheetRow: number;
+  findings: DeterministicCheck[];
   sevMax?: string;
 }
 
@@ -23,184 +21,210 @@ export interface DeterministicCheck {
   severity: "critical" | "high" | "medium" | "low";
 }
 
-const CHECKS: DeterministicCheck[] = [
+interface EtherscanResponse {
+  status: string;
+  message?: string;
+  result?: Array<{ SourceCode?: string }> | string;
+}
+
+export const CHECKS: DeterministicCheck[] = [
   {
-    name: "erc20_transfer",
-    pattern: /function transfer\\(address to, uint256 amount\\)/,
-    description: "Missing ERC20 transfer function",
+    name: "selfdestruct_unprotected",
+    pattern: /(?<!onlyOwner.*\n.*)(selfdestruct|suicide)\s*\(/,
+    description: "Selfdestruct or suicide without onlyOwner protection",
     severity: "critical",
   },
   {
-    name: "tx_origin_auth",
-    pattern: /onlyOwner.*tx\\.origin|if\\(.*tx\\.origin\\).{0,20}onlyOwner|tx\\.origin.*onlyOwner/,
-    description: "Uses tx.origin for authorization",
+    name: "tx_origin_auth_real",
+    pattern: /tx\.origin\s*[=!]=|require\s*\([^)]*tx\.origin/,
+    description: "tx.origin used for authentication",
     severity: "high",
   },
   {
-    name: "self_destruct",
-    pattern: /selfdestruct\\(/,
-    description: "Contains selfdestruct function",
-    severity: "high",
-  },
-  {
-    name: "unrestricted_mint",
-    pattern: /function mint\\(address to, uint256 amount\\)/,
-    description: "Public minting without limits",
+    name: "public_mint_no_access",
+    pattern: /function\s+mint\s*\([^)]*\)\s*(external|public)\s+(?:(?!onlyOwner|onlyRole|onlyMinter|onlyAdmin)[\s\S])*?\{/s,
+    description: "Public mint function may lack access control",
     severity: "critical",
   },
   {
-    name: "owner_drain",
-    pattern: /function withdraw\\(/|function transferFrom\\(address from, address to, uint256 amount\\).*onlyOwner/,
-    description: "Owner can drain funds",
-    severity: "critical",
-  },
-  {
-    name: "delegatecall_input",
-    pattern: /delegatecall\\(\\s*\\.\\w+\\(\s*\\.\\w+/,
-    description: "Delegatecall with external input",
+    name: "sweep_token_unrestricted",
+    pattern: /function\s+(sweepToken|withdrawToken|rescueToken)\s*\([^)]*\)\s*(external|public)[^}]*onlyOwner/,
+    description: "Owner token sweep may drain user assets",
     severity: "high",
   },
   {
-    name: "unauthorized_calls",
-    pattern: /external.*call.*payable.*noReentrant|CEI violation/,
-    description: "CEI violations",
-    severity: "high",
-  },
-  {
-    name: "quantum_reward_pattern",
-    pattern: /notifyReward.*uint256.*amount.*balance.*supply.*holdingPeriod|function claim.*uint256.*amount/,
-    description: "Quantum reward sniping patterns",
-    severity: "high",
+    name: "unlimited_approval",
+    pattern: /approve\s*\([^,]*,\s*(type\s*\(\s*uint256\s*\)\s*\.\s*max|~\s*uint256\s*\(\s*0\s*\))/,
+    description: "Unlimited token approval",
+    severity: "medium",
   },
 ];
 
-export async function runDeterministicScanner(): Promise<void> {
-  console.log("Starting deterministic scanner for 827 contracts...");
-  const cfg = loadSheetsConfig();
+const CHAIN_IDS: Record<string, string> = {
+  "1": "1", mainnet: "1", ethereum: "1", "137": "137", polygon: "137", matic: "137",
+  "8453": "8453", base: "8453", "42161": "42161", arbitrum: "42161", "56": "56",
+  bsc: "56", binance: "56", "10": "10", optimism: "10", "43114": "43114", avalanche: "43114",
+};
 
-  const range = "'contrato encontrados'!A2:M3000";
-  const data = await sheetsValuesGet(cfg, range);
+const sourceCache = new Map<string, Promise<string | null>>();
+let lastRequestAt = 0;
 
-  console.log(`Loaded ${data.length} rows from sheet2"`);
-
-  const contracts: Contract[] = [];
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const [addr, name, symbol, chain, seen] = row.slice(0, 5);
-    if (!addr) continue;
-
-    contracts.push({
-      address: addr as `0x${string}`,
-      name: name || "",
-      symbol: symbol || "",
-      chain: chain || "",
-      seen: seen || "",
-      findings: [],
-      sevMax: "",
-    });
-  }
-
-  console.log(`Processing ${contracts.length} contracts...`);
-
-  for (let i = 0; i < contracts.length; i++) {
-    const contract = contracts[i];
-    console.log(`[${i + 1}/${contracts.length}] Scanning ${contract.address} (${contract.name})`);
-
-    const findings: string[] = [];
-    let highestSeverity: Contract["sevMax"] = "";
-
-    for (const check of CHECKS) {
-      if (await performCheck(contract.address, check.pattern, check.description)) {
-        findings.push(check.description);
-        if (!highestSeverity || getSeverityLevel(check.severity) > getSeverityLevel(highestSeverity)) {
-          highestSeverity = check.severity;
-        }
-      }
-    }
-
-    contract.findings = findings;
-    contract.sevMax = highestSeverity || "fp";
-
-    if (i % 50 === 0) {
-      console.log(`Progress: ${i + 1}/${contracts.length} contracts scanned"`);
-    }
-  }
-
-  await writeResultsToSheet(cfg, contracts);
-  await generateSummaryReport(contracts);
-  console.log("Deterministic scanner completed successfully");
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function performCheck(address: string, pattern: RegExp, description: string): Promise<boolean> {
-  try {
-    const sourcePath = path.join("contracts", address, `${address}.sol`);
+export function mapChainId(chain: string): string | null {
+  return CHAIN_IDS[chain.trim().toLowerCase()] ?? null;
+}
 
-    try {
-      const source = await fs.readFile(sourcePath, "utf8");
-      return pattern.test(source);
-    } catch (err) {
-      return false;
-    }
-  } catch (err) {
-    return false;
+export function isValidAddress(address: string): address is `0x${string}` {
+  return /^0x[0-9a-fA-F]{40}$/.test(address);
+}
+
+export function isReviewRowEligible(row: string[] | undefined): boolean {
+  return !row?.[7]?.trim();
+}
+
+export function buildReviewValues(contract: Contract, reviewedAt: string): string[] {
+  if (contract.findings.length > 0) {
+    return [
+      "requiere_mas_pruebas",
+      contract.findings.map((finding) => `${finding.name}: ${finding.description}`).join("; "),
+      "pendiente",
+      "Scanner determinista v3; requiere deep-audit manual",
+      reviewedAt,
+    ];
   }
+  return [
+    "fp",
+    "Scanner determinista v3: sin patrones detectados",
+    "no",
+    "Sin hallazgos deterministas",
+    reviewedAt,
+  ];
+}
+
+async function waitForRateLimit(): Promise<void> {
+  const waitMs = Math.max(0, 250 - (Date.now() - lastRequestAt));
+  if (waitMs > 0) await sleep(waitMs);
+  lastRequestAt = Date.now();
+}
+
+export async function fetchSource(address: string, chainIdRaw: string): Promise<string | null> {
+  const cacheKey = `${chainIdRaw.trim().toLowerCase()}:${address.toLowerCase()}`;
+  const existing = sourceCache.get(cacheKey);
+  if (existing) return existing;
+  const pending = fetchSourceUncached(address, chainIdRaw);
+  sourceCache.set(cacheKey, pending);
+  return pending;
+}
+
+async function fetchSourceUncached(address: string, chainIdRaw: string): Promise<string | null> {
+  const normalizedAddress = address.toLowerCase();
+  const sourceDir = path.join("contracts", normalizedAddress);
+  const sourcePath = path.join(sourceDir, `${normalizedAddress}.sol`);
+  try {
+    return await readFile(sourcePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const chainId = mapChainId(chainIdRaw);
+  if (!chainId) {
+    console.warn(`Skipping ${address}: unsupported chain "${chainIdRaw}"`);
+    return null;
+  }
+  const apiKey = process.env.ETHERSCAN_API_KEY;
+  if (!apiKey) throw new Error("ETHERSCAN_API_KEY is required");
+  await waitForRateLimit();
+  const params = new URLSearchParams({ chainid: chainId, module: "contract", action: "getsourcecode", address, apikey: apiKey });
+  const response = await fetch(`https://api.etherscan.io/v2/api?${params}`);
+  if (!response.ok) {
+    console.warn(`Skipping ${address}: Etherscan HTTP ${response.status}`);
+    return null;
+  }
+  const data = (await response.json()) as EtherscanResponse;
+  const source = Array.isArray(data.result) ? data.result[0]?.SourceCode?.trim() : "";
+  if (data.status !== "1" || !source) {
+    console.warn(`Skipping ${address}: source not verified`);
+    return null;
+  }
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(sourcePath, source, "utf8");
+  return source;
+}
+
+async function performCheck(address: string, chainIdRaw: string, pattern: RegExp): Promise<boolean> {
+  const source = await fetchSource(address, chainIdRaw);
+  return source ? pattern.test(source) : false;
 }
 
 function getSeverityLevel(severity: string): number {
-  const levels: Record<string, number> = {
-    critical: 4,
-    high: 3,
-    medium: 2,
-    low: 1,
-  };
-  return levels[severity] || 0;
+  return ({ critical: 4, high: 3, medium: 2, low: 1 } as Record<string, number>)[severity] || 0;
 }
 
-async function writeResultsToSheet(cfg: any, contracts: Contract[]): Promise<void> {
-  console.log("Writing results to sheet2...");
-
-  const results: string[][] = [];
-  for (let i = 0; i < contracts.length; i++) {
-    const contract = contracts[i];
-    const findingsStr = contract.findings.join("; ");
-    const sevMaxStr = contract.sevMax;
-
-    const sheetRow = [
-      contract.address,
-      contract.name,
-      contract.symbol,
-      contract.chain,
-      "",
-      sevMaxStr,
-      findingsStr,
-      "", "", "", "", "", "",
-    ];
-    results.push(sheetRow);
-
-    if (i % 50 === 0) {
-      console.log(`Written ${i + 1}/${contracts.length} rows to sheet2"`);
+export async function runDeterministicScanner(dryRun = false): Promise<void> {
+  const cfg = loadSheetsConfig();
+  const [sourceRows, reviewRows] = await Promise.all([
+    sheetsValuesGet(cfg, "'contrato encontrados'!A2:M3000"),
+    sheetsValuesGet(cfg, "'Revisiones'!A2:L3000"),
+  ]);
+  const contracts: Contract[] = sourceRows.flatMap((row, index) => {
+    const [address, name, symbol, chain, seen] = row.slice(0, 5);
+    if (!address || !isReviewRowEligible(reviewRows[index])) return [];
+    if (!isValidAddress(address)) {
+      console.warn(`Skipping row ${index + 2}: invalid address "${address}"`);
+      return [];
     }
+    return [{ address, name: name || "", symbol: symbol || "", chain: chain || "", seen: seen || "", sheetRow: index + 2, findings: [], sevMax: "" }];
+  });
+  console.log(`Eligible contracts: ${contracts.length}; protected review rows: ${sourceRows.length - contracts.length}`);
+  for (let index = 0; index < contracts.length; index++) {
+    const contract = contracts[index];
+    console.log(`[${index + 1}/${contracts.length}] Scanning ${contract.address} (${contract.name})`);
+    let highestSeverity = "";
+    for (const check of CHECKS) {
+      if (await performCheck(contract.address, contract.chain, check.pattern)) {
+        contract.findings.push(check);
+        if (getSeverityLevel(check.severity) > getSeverityLevel(highestSeverity)) highestSeverity = check.severity;
+      }
+    }
+    contract.sevMax = highestSeverity || "fp";
   }
-
-  await sheetsValuesPut(cfg, "'Revisiones'!A2:M3000", results);
-  console.log(`Successfully wrote ${results.length} rows to sheet2"`);
+  const reviewedAt = new Date().toISOString();
+  if (dryRun) {
+    console.log(`DRY RUN: ${contracts.length} proposed H:L row updates; Google Sheets writes: 0`);
+    for (const contract of contracts) console.log(`Revisiones!H${contract.sheetRow}:L${contract.sheetRow}\t${JSON.stringify(buildReviewValues(contract, reviewedAt))}`);
+  } else {
+    await writeResultsToSheet(cfg, contracts, reviewedAt);
+  }
+  await generateSummaryReport(contracts, dryRun, reviewedAt);
 }
 
-async function generateSummaryReport(contracts: Contract[]): Promise<void> {
-  console.log("Generating summary report...");
-
-  const summaryPath = "/tmp/deterministic_scanner_report.md";
-  const summary = `# Deterministic Scanner Report\nGenerated: ${new Date().toISOString()}\n\n## Summary Statistics\n- Total contracts scanned: ${contracts.length}\n- Contracts with findings: ${contracts.filter(c => c.findings.length > 0).length}\n\n## High-Value Candidates\n`; \n
-  const bugRealContracts = contracts.filter(c => c.sevMax === "high" && c.findings.some(f => f.includes("quantum")));
-
-  summary += "Contracts needing manual audit:\n";
-  for (const contract of bugRealContracts) {
-    summary += `- **${contract.name} (${contract.symbol})** - ${contract.address}\n`;
-    summary += `  - Findings: ${contract.findings.join("; ")}\n\n`;
+export async function writeResultsToSheet(cfg: SheetsConfig, contracts: Contract[], reviewedAt: string): Promise<void> {
+  for (const contract of contracts) {
+    await sheetsValuesPut(cfg, `'Revisiones'!H${contract.sheetRow}:L${contract.sheetRow}`, [buildReviewValues(contract, reviewedAt)]);
   }
-
-  await fs.writeFile(summaryPath, summary);
-  console.log(`Summary report written to ${summaryPath}`);
+  console.log(`Wrote ${contracts.length} eligible H:L rows`);
 }
 
-runDeterministicScanner().catch(console.error);
+export async function generateSummaryReport(contracts: Contract[], dryRun: boolean, generatedAt: string): Promise<void> {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, fp: 0 };
+  for (const contract of contracts) counts[contract.sevMax as keyof typeof counts]++;
+  const important = contracts.filter((contract) => contract.findings.some((finding) => finding.severity === "critical" || finding.severity === "high"));
+  let report = `# Deterministic Scanner Report\nGenerated: ${generatedAt}\nMode: ${dryRun ? "dry-run" : "write"}\n\n## Severity counts\n- Critical: ${counts.critical}\n- High: ${counts.high}\n- Medium: ${counts.medium}\n- Low: ${counts.low}\n- No findings: ${counts.fp}\n\n## High and critical hits\n`;
+  report += important.length ? "" : "None\n";
+  for (const contract of important) {
+    const findings = contract.findings.filter((finding) => finding.severity === "critical" || finding.severity === "high");
+    report += `- ${contract.address} (${contract.name || contract.symbol || "unnamed"}, row ${contract.sheetRow}): ${findings.map((finding) => `${finding.severity} ${finding.name}`).join("; ")}\n`;
+  }
+  await writeFile("/tmp/deterministic_scanner_report.md", report, "utf8");
+  console.log("Report: /tmp/deterministic_scanner_report.md");
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  runDeterministicScanner(process.argv.includes("--dry-run")).catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

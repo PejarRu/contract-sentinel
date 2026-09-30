@@ -1,8 +1,8 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** 2026-09-26 17:00 Europe/Madrid  
-> **Git:** main tip at last content refresh — **always re-check** `git log -1 --oneline`.  
+> **Date:** 2026-09-30 — updated after deterministic QA and 16-contract review
+> **Git:** local HEAD `c2add1c`; substantial uncommitted scanner/prompts/QA artifacts — **always re-check** `git status --short` and `git log -1 --oneline`.
 > **Previous handoffs:** supersede entirely (do not merge).
 
 New session: read `START.md` → this file → active `PROMPTS/`.
@@ -171,9 +171,89 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - **Pestaña `Revisiones` (dominio de la sesión de revisión, 2026-09-28)**: pestaña 2 del Sheet, creada vía API (sheetId 1294271795). A–G = clon live por `=ARRAYFORMULA(IF(...;"";...))` de la pestaña principal (address, nombre, sev_max, findings, etherscan, visto, ESTADO_tracker) — **locale es_ES ⇒ separador `;` en fórmulas** (con `,` daba #ERROR!). H–L editables por esa sesión: veredicto, pruebas_ejecutadas, explotable, notas_detalladas, fecha_revision. Grids ampliados a 5000 filas (PUT falla al superar grid). Pestaña principal renombrada por el usuario a **«Contrato encontrados»** (el sync usa rangos sin calificar → indiferente). Dominios: bot toca solo pestaña 1 (A–H,M + pull I–L); sesión de revisión solo H–L de Revisiones.
 - **Credenciales locales**: `secrets/local.env` (0600, gitignored) = GOOGLE_* + SHEET_ID + ETHERSCAN_API_KEY copiadas del VPS — para sesiones locales de revisión.
 
+## Latest QA/scanner state (2026-09-30)
+
+### Deterministic scanner v3
+
+- `src/deterministic/run.ts` is modified and uncommitted. `src/deterministic/run.test.ts` is new/untracked.
+- Safe behavior implemented:
+  - `--dry-run` performs no Sheet writes and prints proposed `Revisiones!Hn:Ln` updates.
+  - Reads `Revisiones!A:L`; rows with non-empty H are protected.
+  - Live writes are exclusively H:L, never A:G or M+.
+  - Etherscan V2 source fetch, local cache, 5 req/s cap, NodeNext `.js` imports and chain mapping remain.
+- Active reliable checks only:
+  - `selfdestruct_unprotected`
+  - `tx_origin_auth_real`
+  - `public_mint_no_access`
+  - `sweep_token_unrestricted`
+  - `unlimited_approval`
+- Disabled as noisy: `delegatecall_user_input`, `unchecked_external_call`, `reentrancy_cei`, `flash_loan_no_fee`, `unverified_proxy`.
+- Last dry-run with five checks: **33 hits** total — 15 critical, 7 high, 11 medium; expected `<20` was not met. Do not bulk-write these results without manual triage.
+- Validation after disabling checks: typecheck green; tests **59/59**.
+- Report path: `/tmp/deterministic_scanner_report.md`.
+- Prompts: `PROMPTS/deterministic-scan-v2-prompt.md`, `PROMPTS/deterministic-scan-v3-prompt.md` are untracked. v3 supersedes old QCAT/QPEPE reward pattern.
+
+### Discovery and Sheet synchronization
+
+- `npm run once` Run 3 found 20 candidates, resolved 20 contracts, one automated finding.
+- Sync safely merged Sheet from **827 to 843 rows**: 16 genuinely new; four were already present.
+- Human QA hashes/content were verified unchanged during sync.
+- `Revisiones` H:L remains human/QA-owned. Never run old destructive `A2:M3000` writer.
+- Last 16 rows reviewed manually:
+  - 2 `fp`: RCeo row 828 (existing QA preserved), Estonks row 833.
+  - 14 `descartado_filtro`: mostly no pair or LP `<$10k`.
+  - 0 `requiere_mas_pruebas`; 0 `bug_real`.
+  - Apple/Ondo row 829 had LP ~$44,474.94; beacon proxy and sensitive operations role-protected, no third-party exploit.
+  - Row 843 `0x1234567890abcdef1234567890abcdef12345678` is placeholder, no verified source; marked `descartado_filtro`, not `fp`.
+- Rows 829–843 H:L updated; row 828 preserved. A:G and M+ untouched.
+
+### QCAT/QPEPE final conclusion
+
+- QCAT: `0xadb606c50dbd08bf33061b5c13be9c6ab8f4fc62`, `Revisiones` row 188.
+- QPEPE: `0xe9ac549be395f50602cb1a45410af173152f484e`, row 191.
+- Both now marked `fp`, `explotable=no`, with fork evidence in H:L.
+- Correct reward token is real Quant QNT `0x4a220E6096B25EADb88358cb44068A3248254675`, not obsolete `0xb219...` from old docs.
+- Mechanism is intended fee-sharing: buy token → locker `collect(positionId)` → token `notifyReward` → holder `claim` → sell. It is not a demonstrated code exploit and cannot capture already-distributed rewards.
+- Fork block `26082595`, no mainnet writes:
+  - QCAT was transiently profitable against accumulated fees. At 0.5 QNT: +0.121313073 QNT gross, ~0.013285444 QNT gas, +0.108027629 QNT net before final QNT→ETH/stable conversion and MEV.
+  - At 1.5 QNT: +0.269977291 gross, +0.256691847 net under same assumptions.
+  - QPEPE lost for every tested input 0.05–1.5 QNT.
+  - QCAT collect moved 1.255425933073159 QNT; 70% (`0.8787981531512112 QNT`) went to QCAT holder rewards.
+- Results are one-time/block-state dependent, non-atomic (eight tx in PoC), vulnerable to prior `collect`, sandwich/order changes, and not proof of repeatable profit. Do not operate as exploit.
+- PoC: `node_modules/.poc1.ts`; temporary artifacts `/tmp/qcat-matrix.txt`, `/tmp/qpepe-matrix.txt`, `/tmp/poc-qpepe.ts` may disappear across reboot.
+- `.deepseek_private_audit.md` supersedes optimistic `docs/monetizacion-qcat-qpepe.md`; old ROI claims are invalid.
+
+### Current local working tree
+
+At last check:
+
+```text
+ M docs/SESSION_HANDOFF.md
+ M src/deterministic/run.ts
+?? .deepseek_private_audit.md
+?? PROMPTS/deterministic-scan-prompt.md
+?? PROMPTS/deterministic-scan-v2-prompt.md
+?? PROMPTS/deterministic-scan-v3-prompt.md
+?? docs/qa-deterministic-tiers.md
+?? docs/roadmap-escalado.md
+?? src/deterministic/run.test.ts
+?? src/deterministic/run.ts.backup
+?? tmp_qatab.ts
+```
+
+Do not commit unless explicitly requested. Review/remove temporary `src/deterministic/run.ts.backup` and `tmp_qatab.ts` before any future commit. Do not expose `secrets/local.env`.
+
+### Recommended next session
+
+1. Read `START.md`, this handoff and `PROMPTS/deterministic-scan-v3-prompt.md`.
+2. Run `git status --short`, `npm run typecheck`, `npm test`.
+3. Improve remaining five regexes until dry-run hits are manually credible; target `<20`, but accuracy matters more than count.
+4. Keep continuous discovery running (`npm run watch` or scheduled VPS), sync new contracts, and review only newly appended rows/H-empty rows.
+5. Focus scalable research on reward-accounting patterns only where an external WETH/USDC route and LP `>$10k` provide real entry/exit. Require source-level bug plus fork PoC before `bug_real`.
+
 ## Safety
 
-Read-only; no keys; no `.env` in git; Etherscan key env-only.
+Read-only mainnet research; no signed transactions; no keys; no `.env` in git; Etherscan key env-only. Fork transactions only unless user gives explicit lawful authorization.
 
 ## Open work
 
