@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterKnownSymbols, isKnownSymbol, parseGeckoPools, parseDexTokens } from "./index.js";
+import { filterKnownSymbols, isKnownSymbol, mergeDiscoveredCandidates, parseGeckoPools, parseDexTokens } from "./index.js";
 
 test("filterKnownSymbols filters wrap/stable/bridge", () => {
   const candidates = [
@@ -18,6 +18,16 @@ test("isKnownSymbol detects wrap/stable/bridge", () => {
 
 test("isKnownSymbol does not flag normal tokens", () => {
   assert.ok(!isKnownSymbol("Normal Token", "NORM"));
+});
+
+test("mergeDiscoveredCandidates deduplicates normalized address and keeps latest metadata", () => {
+  const out = mergeDiscoveredCandidates([
+    { address: "0xAAAA000000000000000000000000000000000001", name: "Old", symbol: "OLD", chainId: 1 },
+    { address: "0xaaaa000000000000000000000000000000000001", name: "Renamed", symbol: "NEW", chainId: 1 },
+  ] as any);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].address, "0xaaaa000000000000000000000000000000000001");
+  assert.equal(out[0].name, "Renamed");
 });
 
 test("parseGeckoPools extracts base token from included", () => {

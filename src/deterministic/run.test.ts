@@ -23,13 +23,23 @@ test("validates Ethereum addresses", () => {
   assert.equal(isValidAddress("0x123"), false);
 });
 
-test("builds exact H:L values without findings", () => {
-  assert.deepEqual(buildReviewValues(contract([]), "2026-09-29T00:00:00.000Z"), [
+test("builds exact H:L values for verified source without findings", () => {
+  assert.deepEqual(buildReviewValues({ ...contract([]), sourceVerified: true }, "2026-09-29T00:00:00.000Z"), [
     "fp",
     "Scanner determinista v3: sin patrones detectados",
     "no",
     "Sin hallazgos deterministas",
     "2026-09-29T00:00:00.000Z",
+  ]);
+});
+
+test("never classifies unverified source as fp", () => {
+  assert.deepEqual(buildReviewValues({ ...contract([]), sourceVerified: false }, "2026-09-30"), [
+    "requiere_mas_pruebas",
+    "Fuente no verificada en Etherscan V2",
+    "desconocido",
+    "Sin fuente verificada; pendiente de verificación manual",
+    "2026-09-30",
   ]);
 });
 

@@ -91,9 +91,12 @@ export class Orchestrator {
   }
 
   private recordCandidates(candidates: Candidate[], runId: number): void {
-    const stmt = this.db.prepare("INSERT OR IGNORE INTO candidates (address, name, symbol, chainId) VALUES (?, ?, ?, ?)");
+    const stmt = this.db.prepare(`
+      INSERT INTO candidates (address, name, symbol, chainId) VALUES (?, ?, ?, ?)
+      ON CONFLICT(address) DO UPDATE SET name = excluded.name, symbol = excluded.symbol, chainId = excluded.chainId
+    `);
     for (const c of candidates) {
-      stmt.run(c.address, c.name, c.symbol, c.chainId);
+      stmt.run(c.address.toLowerCase(), c.name, c.symbol, c.chainId);
       this.db.prepare("INSERT OR IGNORE INTO attempts (run_id, step, status, next_retry_at) VALUES (?, 'scan', 'done', NULL)").run(runId);
     }
   }

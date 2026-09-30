@@ -12,6 +12,7 @@ export interface Contract {
   sheetRow: number;
   findings: DeterministicCheck[];
   sevMax?: string;
+  sourceVerified?: boolean;
 }
 
 export interface DeterministicCheck {
@@ -86,6 +87,15 @@ export function isReviewRowEligible(row: string[] | undefined): boolean {
 }
 
 export function buildReviewValues(contract: Contract, reviewedAt: string): string[] {
+  if (contract.sourceVerified === false) {
+    return [
+      "requiere_mas_pruebas",
+      "Fuente no verificada en Etherscan V2",
+      "desconocido",
+      "Sin fuente verificada; pendiente de verificación manual",
+      reviewedAt,
+    ];
+  }
   if (contract.findings.length > 0) {
     return [
       "requiere_mas_pruebas",
@@ -153,9 +163,8 @@ async function fetchSourceUncached(address: string, chainIdRaw: string): Promise
   return source;
 }
 
-async function performCheck(address: string, chainIdRaw: string, pattern: RegExp): Promise<boolean> {
-  const source = await fetchSource(address, chainIdRaw);
-  return source ? pattern.test(source) : false;
+function performCheck(source: string, pattern: RegExp): boolean {
+  return pattern.test(source);
 }
 
 function getSeverityLevel(severity: string): number {
@@ -182,13 +191,17 @@ export async function runDeterministicScanner(dryRun = false): Promise<void> {
     const contract = contracts[index];
     console.log(`[${index + 1}/${contracts.length}] Scanning ${contract.address} (${contract.name})`);
     let highestSeverity = "";
-    for (const check of CHECKS) {
-      if (await performCheck(contract.address, contract.chain, check.pattern)) {
-        contract.findings.push(check);
-        if (getSeverityLevel(check.severity) > getSeverityLevel(highestSeverity)) highestSeverity = check.severity;
+    const source = await fetchSource(contract.address, contract.chain);
+    contract.sourceVerified = source !== null;
+    if (source) {
+      for (const check of CHECKS) {
+        if (performCheck(source, check.pattern)) {
+          contract.findings.push(check);
+          if (getSeverityLevel(check.severity) > getSeverityLevel(highestSeverity)) highestSeverity = check.severity;
+        }
       }
     }
-    contract.sevMax = highestSeverity || "fp";
+    contract.sevMax = source ? highestSeverity || "fp" : "unverified";
   }
   const reviewedAt = new Date().toISOString();
   if (dryRun) {
@@ -208,10 +221,10 @@ export async function writeResultsToSheet(cfg: SheetsConfig, contracts: Contract
 }
 
 export async function generateSummaryReport(contracts: Contract[], dryRun: boolean, generatedAt: string): Promise<void> {
-  const counts = { critical: 0, high: 0, medium: 0, low: 0, fp: 0 };
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, fp: 0, unverified: 0 };
   for (const contract of contracts) counts[contract.sevMax as keyof typeof counts]++;
   const important = contracts.filter((contract) => contract.findings.some((finding) => finding.severity === "critical" || finding.severity === "high"));
-  let report = `# Deterministic Scanner Report\nGenerated: ${generatedAt}\nMode: ${dryRun ? "dry-run" : "write"}\n\n## Severity counts\n- Critical: ${counts.critical}\n- High: ${counts.high}\n- Medium: ${counts.medium}\n- Low: ${counts.low}\n- No findings: ${counts.fp}\n\n## High and critical hits\n`;
+  let report = `# Deterministic Scanner Report\nGenerated: ${generatedAt}\nMode: ${dryRun ? "dry-run" : "write"}\n\n## Severity counts\n- Critical: ${counts.critical}\n- High: ${counts.high}\n- Medium: ${counts.medium}\n- Low: ${counts.low}\n- No findings: ${counts.fp}\n- Unverified source: ${counts.unverified}\n\n## High and critical hits\n`;
   report += important.length ? "" : "None\n";
   for (const contract of important) {
     const findings = contract.findings.filter((finding) => finding.severity === "critical" || finding.severity === "high");

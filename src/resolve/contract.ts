@@ -50,7 +50,7 @@ export async function resolve(address: `0x${string}`): Promise<ResolvedContract>
     proxy: false,
     implementation: null,
     admin: null,
-    language: "Solidity",
+    language: "",
     sources: {},
     abi: [],
   };

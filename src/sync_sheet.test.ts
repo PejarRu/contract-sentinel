@@ -33,7 +33,7 @@ test("buildSheetRows: contract data, severity label, review status, explorer lin
   try {
     db.prepare("INSERT INTO candidates (address, name, symbol, chainId, discovered_at) VALUES (?,?,?,?,?)")
       .run("0xaaa", "Alpha", "ALP", 1, "2026-09-27 10:00:00");
-    db.prepare("INSERT INTO contracts (address, proxy, language) VALUES (?,?,?)").run("0xaaa", 0, "Solidity");
+    db.prepare("INSERT INTO contracts (address, proxy, language, sources_path) VALUES (?,?,?,?)").run("0xaaa", 0, "Solidity", '{"0xaaa.sol":"contract Alpha {}"}');
     db.prepare("INSERT INTO contracts (address, proxy, language) VALUES (?,?,?)").run("0xbbb", 0, null);
     const runId = Number(db.prepare("INSERT INTO runs (status, started_at) VALUES ('completed', datetime('now'))").run().lastInsertRowid);
     db.prepare("INSERT INTO findings (run_id, contract_address, severity, title) VALUES (?,?,?,?)")
@@ -96,6 +96,18 @@ test("mergeSheetRows: keeps row order + human cols I–L, updates data cols, app
   assert.deepEqual(merged[1], existing[1]);
   // new row appended with full data
   assert.deepEqual(merged[2], incoming[0 + 1]);
+});
+
+test("mergeSheetRows deduplicates normalized addresses and updates metadata", () => {
+  const existing = [
+    ["0xABC", "Old", "OLD", "1", "", "N", "", "-", "fp", "2026-09-29", "qa", "", "oldlink"],
+    ["0xabc", "Duplicate", "DUP", "1", "", "N", "", "-", "pendiente", "", "", "", "duplink"],
+  ];
+  const incoming = [["0xabc", "Renamed", "NEW", "1", "2026-09-30", "Y", "", "-", "pendiente", "", "", "", "newlink"]];
+  const merged = mergeSheetRows(existing, incoming);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0][1], "Renamed");
+  assert.deepEqual(merged[0].slice(8, 12), ["fp", "2026-09-29", "qa", ""]);
 });
 
 test("reviewsFromSheetRows: maps I–L, lowercases addr, skips blanks, normalizes status", () => {

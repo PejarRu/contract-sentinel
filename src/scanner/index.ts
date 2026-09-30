@@ -54,6 +54,15 @@ export function filterKnownSymbols(candidates: Candidate[]): Candidate[] {
   return candidates.filter((c) => !isKnownSymbol(c.name, c.symbol));
 }
 
+export function mergeDiscoveredCandidates(candidates: Candidate[]): Candidate[] {
+  const byAddress = new Map<string, Candidate>();
+  for (const candidate of candidates) {
+    const address = candidate.address.toLowerCase() as `0x${string}`;
+    byAddress.set(address, { ...candidate, address });
+  }
+  return [...byAddress.values()];
+}
+
 export async function scan(config: ScannerConfig): Promise<Candidate[]> {
   const db = openDb();
 
@@ -67,22 +76,22 @@ export async function scan(config: ScannerConfig): Promise<Candidate[]> {
 
   const discovered = await discover(config.chainId);
 
-  // Dedupe within the batch (same token can appear in multiple new pools) and against SQLite
-  const seen = new Set<string>();
+  const candidates = filterKnownSymbols(mergeDiscoveredCandidates(discovered));
+  const existingStmt = db.prepare("SELECT address FROM candidates WHERE LOWER(address) = ?");
+  const updateStmt = db.prepare("UPDATE candidates SET name = ?, symbol = ?, chainId = ? WHERE LOWER(address) = ?");
+  const insertStmt = db.prepare("INSERT INTO candidates (address, name, symbol, chainId) VALUES (?, ?, ?, ?)");
   const fresh: Candidate[] = [];
-  for (const c of discovered) {
-    if (seen.has(c.address)) continue;
-    seen.add(c.address);
-    const existing = db.prepare("SELECT address FROM candidates WHERE address = ?").get(c.address);
-    if (!existing) fresh.push(c);
+  for (const candidate of candidates) {
+    const address = candidate.address.toLowerCase();
+    const existing = existingStmt.get(address) as { address: string } | undefined;
+    if (existing) {
+      updateStmt.run(candidate.name, candidate.symbol, candidate.chainId, address);
+    } else {
+      insertStmt.run(address, candidate.name, candidate.symbol, candidate.chainId);
+      fresh.push({ ...candidate, address: address as `0x${string}` });
+    }
   }
-
-  const kept = filterKnownSymbols(fresh);
-  const stmt = db.prepare("INSERT OR IGNORE INTO candidates (address, name, symbol, chainId) VALUES (?, ?, ?, ?)");
-  for (const c of kept) {
-    stmt.run(c.address, c.name, c.symbol, c.chainId);
-  }
-  return kept;
+  return fresh;
 }
 
 async function discover(chainId: number): Promise<Candidate[]> {

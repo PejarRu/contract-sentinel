@@ -164,7 +164,7 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - Tabla `reviews (address PK, status, reviewed_at, notes, bounty, updated_at)` — SIN FK (hoja editable; filas huérfanas no rompen pull). `normalizeStatus` acepta aliases (`falso positivo`→fp, `bug real`→bug_real); desconocido→`pendiente`.
 - `mergeSheetRows`: preserva orden humano + I–L del existing, actualiza A–H+M, stale intactas, nuevas al final. **Rango PUT = `A2:M${merged.length+1}`** (fila 1 = cabecera; el `merged.length` a secas daba `tried writing to row 805`).
 - `src/lib/sheets.ts`: cliente fetch cero-dep; token refresh con **retry 3× backoff** (Google devuelve 400 intermitente `Invalid JSON payload` — curl siempre OK, era transitorio Google-side, no creds). Error serializa `JSON.stringify(data)` (antes `[object Object]`).
-- OAuth: client web `941748425000-tq8e9lkeb8r0qihcp819941s0i28rr7l.apps.googleusercontent.com`, redirect `http://localhost:8765` (SIN trailing barra). Creds en `secrets/sentinel.env` (0600, gitignored). **Compose whitelist**: `docker-compose.yml` debe listar `GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`, `SHEET_ID` en `environment:` (sin eso el container no los ve).
+- OAuth: client web (ver `secrets/local.env`), redirect `http://localhost:8765` (SIN trailing barra). Creds en `secrets/sentinel.env` (0600, gitignored). **Compose whitelist**: `docker-compose.yml` debe listar `GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`, `SHEET_ID` en `environment:` (sin eso el container no los ve).
 - Cron VPS: `10 8,20 * * * root /opt/contract-sentinel/sync.sh >> runtime/sync.log` (5 min tras cada digesto).
 - Primer sync real: **804 filas push + 804 pull**. Tests 54/54.
 - **Bidireccional verificado en vivo (2026-09-28)**: edición simulada en Sheet → pull → `reviews` OK; edición sobrevive al push siguiente (merge preserva I–L); 827 filas a las 10:33.
@@ -250,6 +250,16 @@ Do not commit unless explicitly requested. Review/remove temporary `src/determin
 3. Improve remaining five regexes until dry-run hits are manually credible; target `<20`, but accuracy matters more than count.
 4. Keep continuous discovery running (`npm run watch` or scheduled VPS), sync new contracts, and review only newly appended rows/H-empty rows.
 5. Focus scalable research on reward-accounting patterns only where an external WETH/USDC route and LP `>$10k` provide real entry/exit. Require source-level bug plus fork PoC before `bug_real`.
+
+### Source verification and normalized-address dedupe (2026-09-30, local uncommitted)
+
+- Investigated requested Sheet rows with Etherscan V2 and DexScreener. Every located target currently has verified source; transient empty Etherscan responses were retried before classification. No H:L cells changed because rule forbids changing verified-source QA without demonstrated error.
+- Estonks `0x3494c410caa17ad30391da7f1eb4554303fbdd99` is `StockPadToken`, verified source (68,210 bytes), row 833, one Uniswap ETH pair with about $0.04 liquidity. Existing `fp` remains.
+- ONDO `0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3` is verified `Ondo`; Estonks and ONDO stale SQLite `sources_path='{}'` caches were refreshed with real source.
+- Sheet and SQLite contain no case-normalized duplicate addresses. SafeInu was not present by requested name.
+- Scanner now fetches source once and marks unverified source `requiere_mas_pruebas` instead of `fp`. Resolver leaves `language` empty without source. Sheet source flag uses non-empty `sources_path`, not language.
+- Scanner and Sheet merge deduplicate lowercase addresses; rediscovery updates name/symbol/chain metadata without returning a new candidate or appending a Sheet row.
+- Validation: `npm run typecheck` passed; `npm test` passed 62/62. No commit/push.
 
 ## Safety
 

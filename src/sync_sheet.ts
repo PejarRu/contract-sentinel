@@ -49,10 +49,11 @@ export function buildSheetRows(db: Database.Database): string[][] {
            GROUP_CONCAT(DISTINCT severity || ': ' || title) titles
          FROM findings GROUP BY contract_address
        ), cd AS (
-         SELECT address, name, symbol, chainId, discovered_at FROM candidates GROUP BY address
+         SELECT LOWER(address) address, MAX(name) name, MAX(symbol) symbol, MAX(chainId) chainId,
+           MAX(discovered_at) discovered_at FROM candidates GROUP BY LOWER(address)
        )
-       SELECT c.address, cd.name, cd.symbol, cd.chainId, COALESCE(cd.discovered_at, c.cached_at) seen,
-         CASE WHEN c.language IS NULL OR c.language = '' THEN 'N' ELSE 'Y' END src,
+       SELECT LOWER(c.address) address, cd.name, cd.symbol, cd.chainId, COALESCE(cd.discovered_at, c.cached_at) seen,
+          CASE WHEN c.sources_path IS NULL OR c.sources_path = '' OR c.sources_path = '{}' THEN 'N' ELSE 'Y' END src,
          COALESCE(sev.rank, 0) rank, COALESCE(sev.titles, '') titles,
          r.status, r.reviewed_at, r.notes, r.bounty
        FROM contracts c
@@ -91,13 +92,14 @@ export function buildSheetRows(db: Database.Database): string[][] {
  * New contracts are appended at the end. Returns the full A2:M matrix.
  */
 export function mergeSheetRows(existing: string[][], incoming: string[][]): string[][] {
-  const inByAddr = new Map(incoming.map((r) => [r[0], r]));
+  const normalizeAddress = (address: string): string => address.trim().toLowerCase();
+  const inByAddr = new Map(incoming.map((r) => [normalizeAddress(r[0] ?? ""), r]));
   const seen = new Set<string>();
   const merged: string[][] = [];
 
   for (const row of existing) {
-    const addr = (row[0] ?? "").trim();
-    if (!addr) continue;
+    const addr = normalizeAddress(row[0] ?? "");
+    if (!addr || seen.has(addr)) continue;
     const inc = inByAddr.get(addr);
     if (inc) {
       // data cols A–H from incoming, human cols I–L kept, link M from incoming
@@ -108,7 +110,11 @@ export function mergeSheetRows(existing: string[][], incoming: string[][]): stri
     }
   }
   for (const row of incoming) {
-    if (!seen.has(row[0])) merged.push(row);
+    const addr = normalizeAddress(row[0] ?? "");
+    if (!seen.has(addr)) {
+      merged.push(row);
+      seen.add(addr);
+    }
   }
   return merged;
 }
