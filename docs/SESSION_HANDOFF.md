@@ -175,7 +175,7 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 
 ### Deterministic scanner v3
 
-- `src/deterministic/run.ts` is modified and uncommitted. `src/deterministic/run.test.ts` is new/untracked.
+- Scanner seguro y tests están versionados en `main` (`bf00d43`, ampliado por `d815622`).
 - Safe behavior implemented:
   - `--dry-run` performs no Sheet writes and prints proposed `Revisiones!Hn:Ln` updates.
   - Reads `Revisiones!A:L`; rows with non-empty H are protected.
@@ -191,7 +191,7 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - Last dry-run with five checks: **33 hits** total — 15 critical, 7 high, 11 medium; expected `<20` was not met. Do not bulk-write these results without manual triage.
 - Validation after disabling checks: typecheck green; tests **59/59**.
 - Report path: `/tmp/deterministic_scanner_report.md`.
-- Prompts: `PROMPTS/deterministic-scan-v2-prompt.md`, `PROMPTS/deterministic-scan-v3-prompt.md` are untracked. v3 supersedes old QCAT/QPEPE reward pattern.
+- Prompts v2/v3 están versionados; v3 supersede el patrón antiguo de rewards QCAT/QPEPE.
 
 ### Discovery and Sheet synchronization
 
@@ -223,25 +223,12 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - PoC: `node_modules/.poc1.ts`; temporary artifacts `/tmp/qcat-matrix.txt`, `/tmp/qpepe-matrix.txt`, `/tmp/poc-qpepe.ts` may disappear across reboot.
 - `.deepseek_private_audit.md` supersedes optimistic `docs/monetizacion-qcat-qpepe.md`; old ROI claims are invalid.
 
-### Current local working tree
+### Repository state
 
-At last check:
-
-```text
- M docs/SESSION_HANDOFF.md
- M src/deterministic/run.ts
-?? .deepseek_private_audit.md
-?? PROMPTS/deterministic-scan-prompt.md
-?? PROMPTS/deterministic-scan-v2-prompt.md
-?? PROMPTS/deterministic-scan-v3-prompt.md
-?? docs/qa-deterministic-tiers.md
-?? docs/roadmap-escalado.md
-?? src/deterministic/run.test.ts
-?? src/deterministic/run.ts.backup
-?? tmp_qatab.ts
-```
-
-Do not commit unless explicitly requested. Review/remove temporary `src/deterministic/run.ts.backup` and `tmp_qatab.ts` before any future commit. Do not expose `secrets/local.env`.
+- `main` and `origin/main` contained `d815622` at this handoff refresh; re-check current HEAD after cloning.
+- Scanner, tests, prompts and handoff are versioned.
+- `secrets/local.env`, SQLite data and `/tmp` PoC outputs are intentionally not versioned; provision credentials separately.
+- Never expose `secrets/local.env`.
 
 ### Recommended next session
 
@@ -251,7 +238,7 @@ Do not commit unless explicitly requested. Review/remove temporary `src/determin
 4. Keep continuous discovery running (`npm run watch` or scheduled VPS), sync new contracts, and review only newly appended rows/H-empty rows.
 5. Focus scalable research on reward-accounting patterns only where an external WETH/USDC route and LP `>$10k` provide real entry/exit. Require source-level bug plus fork PoC before `bug_real`.
 
-### Source verification and normalized-address dedupe (2026-09-30, local uncommitted)
+### Source verification and normalized-address dedupe (2026-09-30, versioned)
 
 - Investigated requested Sheet rows with Etherscan V2 and DexScreener. Every located target currently has verified source; transient empty Etherscan responses were retried before classification. No H:L cells changed because rule forbids changing verified-source QA without demonstrated error.
 - Estonks `0x3494c410caa17ad30391da7f1eb4554303fbdd99` is `StockPadToken`, verified source (68,210 bytes), row 833, one Uniswap ETH pair with about $0.04 liquidity. Existing `fp` remains.
@@ -259,7 +246,7 @@ Do not commit unless explicitly requested. Review/remove temporary `src/determin
 - Sheet and SQLite contain no case-normalized duplicate addresses. SafeInu was not present by requested name.
 - Scanner now fetches source once and marks unverified source `requiere_mas_pruebas` instead of `fp`. Resolver leaves `language` empty without source. Sheet source flag uses non-empty `sources_path`, not language.
 - Scanner and Sheet merge deduplicate lowercase addresses; rediscovery updates name/symbol/chain metadata without returning a new candidate or appending a Sheet row.
-- Validation: `npm run typecheck` passed; `npm test` passed 62/62. No commit/push.
+- Validation: `npm run typecheck` passed; `npm test` passed 62/62. Changes committed and pushed in `d815622`.
 
 ## Safety
 
