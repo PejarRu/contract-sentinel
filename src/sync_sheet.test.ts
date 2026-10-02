@@ -9,6 +9,7 @@ import path from "node:path";
 import { openDb } from "./lib/db.js";
 import {
   SHEET_COLUMNS,
+  buildReviewMirrorRows,
   buildSheetRows,
   mergeSheetRows,
   reviewsFromSheetRows,
@@ -96,6 +97,17 @@ test("mergeSheetRows: keeps row order + human cols I–L, updates data cols, app
   assert.deepEqual(merged[1], existing[1]);
   // new row appended with full data
   assert.deepEqual(merged[2], incoming[0 + 1]);
+});
+
+test("buildReviewMirrorRows maps source columns to Revisiones A:G", () => {
+  const rows = [[
+    "0xabc", "Alpha", "ALP", "1", "2026-10-02", "Y", "high: finding", "high",
+    "pendiente", "", "", "", "https://etherscan.io/address/0xabc",
+  ]];
+  assert.deepEqual(buildReviewMirrorRows(rows), [[
+    "0xabc", "Alpha", "high", "high: finding", "https://etherscan.io/address/0xabc",
+    "2026-10-02", "pendiente",
+  ]]);
 });
 
 test("mergeSheetRows deduplicates normalized addresses and updates metadata", () => {

@@ -1,8 +1,8 @@
 # Session Handoff — contract-sentinel
 
 > **STATUS: LATEST / ACTUAL** — this is the current handoff. Older handoffs are invalid.
-> **Date:** 2026-09-30 — updated after deterministic QA and 16-contract review
-> **Git:** local HEAD `c2add1c`; substantial uncommitted scanner/prompts/QA artifacts — **always re-check** `git status --short` and `git log -1 --oneline`.
+> **Date:** 2026-10-02 21:12 Europe/Madrid — Sheet/VPS recovery completed
+> **Git:** VPS app checkout `f5a8222`; recovery sync/test fixes versioned locally after that SHA — **always re-check** `git status --short` and `git log -1 --oneline`.
 > **Previous handoffs:** supersede entirely (do not merge).
 
 New session: read `START.md` → this file → active `PROMPTS/`.
@@ -247,6 +247,16 @@ Preprocesado: expand wrappers, excluir vendored, strip comentarios, dedupe. Solo
 - Scanner now fetches source once and marks unverified source `requiere_mas_pruebas` instead of `fp`. Resolver leaves `language` empty without source. Sheet source flag uses non-empty `sources_path`, not language.
 - Scanner and Sheet merge deduplicate lowercase addresses; rediscovery updates name/symbol/chain metadata without returning a new candidate or appending a Sheet row.
 - Validation: `npm run typecheck` passed; `npm test` passed 62/62. Changes committed and pushed in `d815622`.
+
+## Recovery 2026-10-02
+
+- Root cause of stale Sheet/digest: jobs were installed in root's personal crontab with an invalid `root` field, producing `/bin/sh: 1: root: not found`. Root crontab corrected; heartbeat, digest and sync entries now omit the username field.
+- VPS watcher never stopped: DB had 2,245 candidates/contracts and 796 completed runs while Sheet remained at 843 rows.
+- Backups created before changes: local Sheet JSON under `/tmp/opencode/contract-sentinel-backups/`; VPS SQLite under `/opt/contract-sentinel/runtime/contract-sentinel-pre-repair-20261002-190618.sqlite`; previous root crontab also saved in runtime.
+- Manual sync recovered backlog: source Sheet and `Revisiones` now have 2,247 aligned data rows; `Revisiones` A:G restored, H:L preserved.
+- Digest executed successfully and sent 200 contracts. Container redeployed at `f5a8222`, healthy; explicit once run 798 completed with 0 new candidates, then sync completed with 0 new rows.
+- VPS root filesystem was 100% full. Safe Docker build-cache/dangling-image cleanup reclaimed 1.855 GB; after rebuild about 2.0 GB remained (95% used). Monitor storage.
+- Local uncommitted prevention fix makes every Sheet push mirror source columns into `Revisiones!A:G` while never writing H:L. `package.json` test script now explicitly includes `src/**/*.test.ts`; validation: typecheck green, 50/50 tests on Node 22.
 
 ## Safety
 

@@ -125,6 +125,18 @@ function pad(row: string[], n: number): string[] {
   return out.slice(0, n);
 }
 
+export function buildReviewMirrorRows(rows: string[][]): string[][] {
+  return rows.map((row) => [
+    row[0] ?? "",
+    row[1] ?? "",
+    row[7] ?? "",
+    row[6] ?? "",
+    row[12] ?? "",
+    row[4] ?? "",
+    row[8] ?? "",
+  ]);
+}
+
 export interface ReviewRow {
   address: string;
   status: string;
@@ -165,6 +177,7 @@ export async function syncSheet(db: Database.Database, mode: "both" | "push" | "
     const merged = mergeSheetRows(existing, rows);
     if (merged.length) {
       await sheetsValuesPut(cfg, `A2:M${merged.length + 1}`, merged);
+      await sheetsValuesPut(cfg, `'Revisiones'!A2:G${merged.length + 1}`, buildReviewMirrorRows(merged));
     }
     result.pushed = { rows: merged.length, added: merged.length - existing.length };
   }
