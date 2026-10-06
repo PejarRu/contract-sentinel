@@ -43,7 +43,7 @@ export const CHECKS: DeterministicCheck[] = [
   },
   {
     name: "public_mint_no_access",
-    pattern: /function\s+mint\s*\([^)]*\)\s*(external|public)\s+(?:(?!onlyOwner|onlyRole|onlyMinter|onlyAdmin)[\s\S])*?\{/s,
+    pattern: /function\s+mint\s*\([^)]*\)\s*(external|public)\s+(?:(?!onlyOwner|onlyRole|onlyMinter|onlyAdmin|require\s*\(\s*msg\.sender\s*==)[\s\S])*?\{/s,
     description: "Public mint function may lack access control",
     severity: "critical",
   },
@@ -214,10 +214,18 @@ export async function runDeterministicScanner(dryRun = false): Promise<void> {
 }
 
 export async function writeResultsToSheet(cfg: SheetsConfig, contracts: Contract[], reviewedAt: string): Promise<void> {
-  for (const contract of contracts) {
-    await sheetsValuesPut(cfg, `'Revisiones'!H${contract.sheetRow}:L${contract.sheetRow}`, [buildReviewValues(contract, reviewedAt)]);
+  const allReviewRows = await sheetsValuesGet(cfg, "'Revisiones'!A2:L3000");
+  const maxRow = Math.max(...contracts.map((c) => c.sheetRow), 0);
+  const values: string[][] = Array.from({ length: maxRow - 1 }, () => ["", "", "", "", ""]);
+  for (let i = 0; i < values.length; i++) {
+    const existing = allReviewRows[i]?.slice(7, 12) ?? [];
+    for (let j = 0; j < 5; j++) values[i][j] = existing[j] ?? "";
   }
-  console.log(`Wrote ${contracts.length} eligible H:L rows`);
+  for (const contract of contracts) {
+    values[contract.sheetRow - 2] = buildReviewValues(contract, reviewedAt);
+  }
+  await sheetsValuesPut(cfg, `'Revisiones'!H2:L${maxRow}`, values);
+  console.log(`Wrote ${contracts.length} eligible H:L rows (batch, ${values.length} total)`);
 }
 
 export async function generateSummaryReport(contracts: Contract[], dryRun: boolean, generatedAt: string): Promise<void> {
