@@ -90,10 +90,13 @@ export function collectDigestRows(db: Database.Database, since: string): DigestR
     chainId: number; discovered_at: string;
   }>;
 
+  // Filter out findings for addresses already reviewed as FP (human decision).
   const frows = db
     .prepare(
       "SELECT DISTINCT f.contract_address, f.severity, f.title FROM findings f " +
-        "JOIN runs r ON r.id = f.run_id WHERE r.started_at >= ?",
+        "JOIN runs r ON r.id = f.run_id " +
+        "LEFT JOIN reviews rv ON rv.address = f.contract_address AND rv.status = 'fp' " +
+        "WHERE r.started_at >= ? AND rv.address IS NULL",
     )
     .all(since) as Array<{ contract_address: string; severity: string; title: string }>;
 
