@@ -10,7 +10,8 @@
     "once": "tsx src/index.ts --once",
     "watch": "tsx src/index.ts --watch",
     "digest": "tsx src/digest.ts",
-    "sync-sheet": "tsx src/sync_sheet.ts"
+    "sync-sheet": "tsx src/sync_sheet.ts",
+    "triage": "tsx src/deterministic/triage.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
